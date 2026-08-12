@@ -4,7 +4,7 @@
   <img src="assets/landed-logo-banner.svg" alt="Landed logo" width="96">
 </p>
 
-<h1 align="center">Landed — for Android/Chrome</h1>
+<h1 align="center">Landed - for Android/Chrome</h1>
 
 <p align="center">
   Pulls the tabs you keep telling yourself you'll "deal with on the computer" from your phone to your PC:
