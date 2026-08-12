@@ -8,8 +8,9 @@
 // heruntergeladen.
 //
 // Aufruf: node tools/fetch-platform-tools.mjs
-import { mkdirSync, existsSync, rmSync, createWriteStream, readdirSync, copyFileSync } from 'node:fs';
+import { mkdirSync, existsSync, rmSync, createWriteStream, readdirSync, copyFileSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pipeline } from 'node:stream/promises';
@@ -20,6 +21,17 @@ const NEEDED_FILES = ['adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll', 'NOTICE.tx
 // Offizielle, stabile Google-URL (developer.android.com/tools/releases/platform-tools) -
 // zeigt immer auf die aktuelle Version, aendert sich selbst nicht.
 const DOWNLOAD_URL = 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip';
+// Rafter-Fund (error): TLS beweist nur "kommt von dl.google.com", nicht
+// "ist unveraendert" - kein Schutz gegen einen kompromittierten Hosting-Pfad
+// oder eine lokal vertrauenswuerdige MITM-Stelle (Firmen-Proxy mit eigener
+// Root-CA). Ohne Pruefsumme wuerden abweichende Bytes unbemerkt als adb.exe/
+// DLLs in die ausgelieferte .exe wandern. Da die URL absichtlich "latest"
+// ist (kein stabiler Versionslink bei Google), kann der Hash nicht ewig
+// gelten - bewusster Trade-off: bei einem legitimen Google-Update schlaegt
+// dieser Build fehl, bis der Hash hier bewusst nachgezogen wird (neu
+// herunterladen, pruefen, Wert unten ersetzen), statt still einen
+// unverifizierten Stand zu uebernehmen.
+const EXPECTED_SHA256 = '45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e022bbc1a99';
 
 if (NEEDED_FILES.every((f) => existsSync(path.join(CACHE_DIR, f)))) {
   console.log(`Schon vorhanden: ${CACHE_DIR}`);
@@ -35,6 +47,16 @@ const zipFile = path.join(tempDir, 'platform-tools.zip');
 const res = await fetch(DOWNLOAD_URL);
 if (!res.ok) throw new Error(`Download fehlgeschlagen: HTTP ${res.status}`);
 await pipeline(res.body, createWriteStream(zipFile));
+
+const actualHash = createHash('sha256').update(readFileSync(zipFile)).digest('hex');
+if (actualHash !== EXPECTED_SHA256) {
+  throw new Error(
+    `SHA256 der heruntergeladenen platform-tools.zip stimmt nicht mit dem gepinnten Wert ueberein ` +
+      `(erwartet ${EXPECTED_SHA256}, erhalten ${actualHash}). Abgebrochen, statt einen unverifizierten ` +
+      `Stand zu verwenden - entweder ein legitimes Google-Update (Hash hier im Skript bewusst ` +
+      `aktualisieren, nach manueller Pruefung) oder ein kompromittierter Download.`
+  );
+}
 
 // Windows' eigenes tar.exe (System32, seit Windows 10 1803, bsdtar-basiert)
 // kann .zip direkt entpacken - kein zusaetzliches Tool noetig. Expliziter

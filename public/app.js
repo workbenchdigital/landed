@@ -275,6 +275,23 @@ function visibleItems(items) {
 // Leichte Domain-Gruppierung fuer Ablagen ohne Mehrfachauswahl/Sammelent-
 // scheidung (die Entscheidung ist hier schon gefallen) - Kopfzeile ohne
 // Checkbox/Gruppenaktionen, sonst dieselbe Optik wie die Sichten-Gruppierung.
+// Rafter-Fund: `domain` stammt aus einer gescannten Tab-URL (store.safeDomain
+// liefert unveraendert new URL(url).hostname) - eine Tab-URL mit interner/
+// Loopback-Adresse (z.B. ein Router- oder localhost-Tab am Handy) wuerde
+// sonst ungeprueft zum Favicon-Fetch-Ziel: `<img src>` laesst den Browser
+// selbst gegen 127.0.0.1/private IPs/IPv6-Literale anfragen (SSRF-shaped,
+// Erfolg/Fehlschlag ueber das load/error-Event beobachtbar). Nur echte
+// Internet-Hostnamen (mit Punkt, kein IP-Literal) bekommen ueberhaupt eine
+// Favicon-Anfrage - Anzeige/Gruppierung nach Domain bleibt fuer alle
+// unveraendert, nur das <img src> wird nicht gesetzt.
+function isSafeFaviconDomain(domain) {
+  if (!domain || !domain.includes('.')) return false; // localhost, einzelnes Label
+  if (domain.includes(':')) return false; // IPv6-Literal (echte Hostnamen enthalten nie ':')
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(domain)) return false; // IPv4-Literal
+  if (/\.(local|internal|lan|home|localdomain)$/i.test(domain)) return false; // mDNS/private TLDs
+  return true;
+}
+
 function renderDomainGroup(container, domain, items) {
   const group = document.createElement('div');
   group.className = 'domain-group' + (collapsedDomains.has(domain) ? ' collapsed' : '');
@@ -286,7 +303,7 @@ function renderDomainGroup(container, domain, items) {
   chevron.textContent = '▾';
   const favicon = document.createElement('img');
   favicon.className = 'favicon';
-  favicon.src = `https://${domain}/favicon.ico`;
+  if (isSafeFaviconDomain(domain)) favicon.src = `https://${domain}/favicon.ico`;
   favicon.alt = '';
   favicon.addEventListener('error', () => favicon.remove());
   const name = document.createElement('span');
@@ -1694,7 +1711,7 @@ function render() {
     chevron.textContent = '▾';
     const favicon = document.createElement('img');
     favicon.className = 'favicon';
-    favicon.src = `https://${domain}/favicon.ico`;
+    if (isSafeFaviconDomain(domain)) favicon.src = `https://${domain}/favicon.ico`;
     favicon.alt = '';
     favicon.addEventListener('error', () => favicon.remove());
     const name = document.createElement('span');
