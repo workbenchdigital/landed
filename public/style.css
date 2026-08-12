@@ -1,0 +1,1403 @@
+/* ============================================================================
+   Landed - Werkbank-Oberflaeche
+   ----------------------------------------------------------------------------
+   Typografie: Bahnschrift (DIN-1451-Linie) fuer Wortmarke, Zaehler und Labels,
+   Segoe UI Variable fuer Fliesstext, Cascadia Mono fuer URLs und Daten. Alle
+   drei liegen auf jedem Windows 10/11 lokal vor - BEWUSST kein Webfont: die
+   App verspricht "laeuft ausschliesslich lokal, kein Cloud-Dienst", und ein
+   Google-Fonts-Request bei jedem Laden wuerde genau dieses Versprechen
+   brechen. Nebeneffekt: die gepackte .exe sieht auch offline richtig aus,
+   vorher fiel sie ohne Netz stillschweigend auf Segoe UI zurueck.
+
+   Farben: die vier Entscheidungsfarben sind Chromes eigene Markenwerte und
+   bleiben unveraendert - sie sind das semantische System der App. Neu ist der
+   Untergrund: die Seite ist grau, die Arbeitsflaechen sind weiss. Vorher war
+   beides reines Weiss, wodurch Karten nur an ihrer Haarlinie erkennbar waren
+   und sieben gestapelte Abschnitte optisch ununterscheidbar wurden.
+   ============================================================================ */
+
+:root {
+  --ground: #e9ecef;
+  --card: #ffffff;
+  --sunken: #f4f6f8;
+  --ink: #1a1c1f;
+  --ink-soft: #5b6167;
+  --line: #d3d8de;
+  --line-strong: #b7bec6;
+  --hatch: #c3cad2;
+
+  --signal: #1a73e8;
+  --signal-text: #1568d6;
+  --signal-soft: #e8f0fe;
+  /* Schriftfarbe AUF der Signalfarbe. Im Hellmodus ist --signal ein kraeftiges
+     Blau und traegt Weiss; im Dunkelmodus ist es Googles helle Dark-Variante
+     (#8ab4f8) - Weiss darauf kaeme auf rund 1,9:1 und waere unlesbar. Deshalb
+     ein eigenes Token statt eines fest verdrahteten #fff. */
+  --on-signal: #ffffff;
+  --keep: #34a853;
+  --keep-text: #277d3e;
+  --keep-soft: #e6f4ea;
+  --pc: #9334e6;
+  --pc-text: #7c22c9;
+  --pc-soft: #f3e8fd;
+  --archive: #fbbc04;
+  --archive-text: #8f6b02;
+  --archive-soft: #fef7e0;
+  --drop: #ea4335;
+  --drop-text: #cf2416;
+  --drop-soft: #fce8e6;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-card: 0 1px 2px rgba(20, 28, 44, 0.06);
+  --shadow-float: 0 12px 32px rgba(20, 28, 44, 0.18);
+
+  --font-display: 'Bahnschrift', 'DIN Next', 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  --font-ui: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
+}
+
+/* Dark-Werte einmal fuer die automatische OS-Erkennung (greift nur, wenn der
+   Nutzer nicht manuell "Hell" erzwungen hat) und einmal fuer den expliziten
+   Schalter. Absichtlich dupliziert statt ueber eine dritte Ebene geteilt -
+   reines CSS kennt keine Mixins, und ein paar Zeilen zweimal sind einfacher
+   als ein Build-Schritt fuer ein Ein-Personen-Werkzeug. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #141517;
+    --card: #202225;
+    --sunken: #1a1b1e;
+    --ink: #e6e8ea;
+    --ink-soft: #9aa0a6;
+    --line: #34373b;
+    --line-strong: #4a4e54;
+    --hatch: #3d4146;
+    --signal: #8ab4f8;
+    --signal-text: #8ab4f8;
+    --signal-soft: #28304d;
+    --on-signal: #17181a;
+    --keep: #81c995;
+    --keep-text: #81c995;
+    --keep-soft: #25322a;
+    --pc: #d0adf0;
+    --pc-text: #d0adf0;
+    --pc-soft: #372a45;
+    --archive: #fdd663;
+    --archive-text: #fdd663;
+    --archive-soft: #332b1a;
+    --drop: #f28b82;
+    --drop-text: #f28b82;
+    --drop-soft: #3c2a28;
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #141517;
+  --card: #202225;
+  --sunken: #1a1b1e;
+  --ink: #e6e8ea;
+  --ink-soft: #9aa0a6;
+  --line: #34373b;
+  --line-strong: #4a4e54;
+  --hatch: #3d4146;
+  --signal: #8ab4f8;
+  --signal-text: #8ab4f8;
+  --signal-soft: #28304d;
+  --on-signal: #17181a;
+  --keep: #81c995;
+  --keep-text: #81c995;
+  --keep-soft: #25322a;
+  --pc: #d0adf0;
+  --pc-text: #d0adf0;
+  --pc-soft: #372a45;
+  --archive: #fdd663;
+  --archive-text: #fdd663;
+  --archive-soft: #332b1a;
+  --drop: #f28b82;
+  --drop-text: #f28b82;
+  --drop-soft: #3c2a28;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+
+body {
+  padding: 0 1.5rem 4rem;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+a { color: inherit; }
+
+/* Bahnschrift ist eine Variable Font mit Breiten- und Gewichtsachse. Etwas
+   schmaler als normal gesetzt trifft sie den Ton technischer Beschriftung,
+   ohne ins Dekorative zu kippen. Faellt sie aus (Nicht-Windows), greift die
+   Fallback-Kette und font-variation-settings laeuft ins Leere - unkritisch. */
+.wordmark h1,
+.tray-count,
+.strip-legend b,
+.section-head h2,
+.eyebrow,
+.count-pill {
+  font-family: var(--font-display);
+  font-variation-settings: 'wdth' 88;
+  font-feature-settings: 'tnum' 1;
+}
+
+.skip-link {
+  position: absolute;
+  top: -3rem;
+  left: 1rem;
+  z-index: 200;
+  background: var(--signal);
+  color: var(--on-signal);
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-weight: 600;
+  transition: top 150ms ease;
+}
+.skip-link:focus { top: 1rem; }
+
+/* ---- Bedienelemente ---- */
+
+button {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 80ms ease;
+}
+button:hover { border-color: var(--signal); }
+button:active { transform: translateY(1px); }
+button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+button.primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+  font-weight: 600;
+}
+button.primary:hover { filter: brightness(1.08); }
+
+/* Die beiden abschliessenden Aktionen sind die einzigen, die wirklich etwas
+   am Telefon veraendern - "schliessen" ist dabei das einzige, was Tabs
+   endgueltig wegnimmt. Es traegt deshalb als einziges eine Warnfarbe. */
+button.danger { border-color: var(--drop); color: var(--drop-text); }
+button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
+
+.ghost-btn,
+.icon-btn {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.65rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-soft);
+}
+.ghost-btn:hover,
+.icon-btn:hover { background: var(--card); border-color: var(--line); color: var(--ink); }
+.icon-btn { padding: 0.3rem 0.5rem; }
+
+.seg {
+  display: flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--card);
+}
+.seg button {
+  border: none;
+  border-radius: 0;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.76rem;
+  background: transparent;
+}
+.seg button:not(:last-child) { border-right: 1px solid var(--line); }
+.seg button:hover { background: var(--sunken); }
+.seg button.active { background: var(--signal); color: var(--on-signal); }
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1;
+  min-width: 190px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.field:focus-within { border-color: var(--signal); box-shadow: 0 0 0 3px var(--signal-soft); }
+.field-icon { color: var(--ink-soft); font-size: 0.95rem; line-height: 1; }
+.field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 0.48rem 0;
+}
+.field input:focus-visible { outline: none; }
+.field-wide { max-width: 620px; }
+
+/* .filter-check ist fuer die volle Breite der Filter-Seitenleiste gedacht -
+   hier nur ein einzelner Schalter in der Werkzeugleiste, deshalb enger. */
+.archive-dropped-toggle { padding: 0.4rem 0.5rem; white-space: nowrap; }
+
+.spacer { flex: 1; }
+
+/* ---- Kopfleiste ---- */
+
+.app-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0 0.9rem;
+  flex-wrap: wrap;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.brand-mark {
+  width: 1.9rem;
+  height: 1.9rem;
+  flex-shrink: 0;
+  color: var(--ink);
+}
+.wordmark h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variation-settings: 'wdth' 80;
+}
+.wordmark-sub {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.app-bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.theme-switch,
+.lang-switch {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.theme-switch button,
+.lang-switch button {
+  border: none;
+  border-radius: 0;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.72rem;
+  background: transparent;
+  color: var(--ink-soft);
+}
+.theme-switch button:not(:last-child),
+.lang-switch button:not(:last-child) { border-right: 1px solid var(--line); }
+.theme-switch button:hover,
+.lang-switch button:hover { background: var(--card); }
+.theme-switch button.active,
+.lang-switch button.active { background: var(--signal); color: var(--on-signal); }
+
+.device-switch {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  max-width: 11rem;
+}
+
+/* ---- Signature: der Kontrollstreifen ------------------------------------
+   Der eine Messwert, um den sich die ganze App dreht: wie viel ist noch
+   unentschieden. Die schraffierte Flaeche ist die Restarbeit - Schraffur
+   statt Leerflaeche, weil das in technischen Zeichnungen genau "noch nicht
+   belegt" heisst. Die farbigen Segmente wachsen von links darueber, bis
+   nichts Schraffiertes mehr uebrig ist.
+
+   Die Schraffur liegt auf der Spur selbst, NICHT auf einem eigenen Segment:
+   app.js skaliert Segmente per transform: scaleX(), was ein Streifenmuster
+   verzerren wuerde. So bleibt das Muster in jeder Fuellstaendigkeit gleich. */
+
+.control-strip { padding-bottom: 1.1rem; }
+
+.strip {
+  position: relative;
+  height: 14px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background-color: var(--sunken);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--hatch) 0 1.5px,
+    transparent 1.5px 6px
+  );
+}
+.strip span {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.strip .s-keep { background: var(--keep); }
+.strip .s-pc { background: var(--pc); }
+.strip .s-archive { background: var(--archive); }
+.strip .s-drop { background: var(--drop); }
+.strip .s-undecided { background: transparent; }
+
+.strip-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.strip-legend {
+  display: flex;
+  gap: 1.05rem;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+  flex-wrap: wrap;
+}
+.strip-legend b {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-right: 0.18rem;
+}
+.strip-legend .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  margin-right: 0.38rem;
+  vertical-align: baseline;
+}
+.strip-legend .dot.keep { background: var(--keep); }
+.strip-legend .dot.pc { background: var(--pc); }
+.strip-legend .dot.archive { background: var(--archive); }
+.strip-legend .dot.drop { background: var(--drop); }
+.strip-legend .dot.undecided {
+  background-color: var(--sunken);
+  background-image: repeating-linear-gradient(-45deg, var(--hatch) 0 1.5px, transparent 1.5px 4px);
+  border: 1px solid var(--line-strong);
+}
+.strip-meta {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+}
+
+/* ---- Ablagen + Werkzeugleiste (bleiben beim Scrollen stehen) ----
+   Der Kontrollstreifen darueber scrollt bewusst weg: den liest man beim
+   Ankommen und nach einer Operation, nicht waehrend des Durchgehens. Was
+   dauerhaft erreichbar bleiben muss, sind Ablagen und Aktionen. */
+
+.deck {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--ground);
+  margin: 0 -1.5rem;
+  padding: 0 1.5rem 0.75rem;
+}
+
+.trays {
+  display: flex;
+  gap: 0.3rem;
+  border-bottom: 1px solid var(--line);
+  /* overflow-y explizit aus: die Reiter ragen per top:1px um genau ein Pixel
+     ueber den Container, was sonst eine sinnlose vertikale Scrollleiste
+     einblendet. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.tray {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  position: relative;
+  top: 1px;
+}
+.tray:hover { background: var(--card); border-color: var(--line); color: var(--ink); }
+.tray .tray-count {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.tray[data-empty="true"] { opacity: 0.5; }
+.tray[data-empty="true"] .tray-count { color: var(--ink-soft); font-weight: 500; }
+
+.tray[aria-selected="true"] {
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  opacity: 1;
+}
+/* Der farbige Deckel sagt, welche Art Arbeit in der Ablage liegt: blau =
+   sichten, lila = am PC erledigen. Die drei Nachschlage-Ablagen bleiben
+   neutral - sie sind Gedaechtnis, keine offene Arbeit. */
+.tray[aria-selected="true"]::before {
+  content: '';
+  position: absolute;
+  inset: -1px -1px auto -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--accent, var(--ink-soft));
+}
+.tray[data-accent="signal"] { --accent: var(--signal); }
+.tray[data-accent="pc"] { --accent: var(--pc); }
+
+.workbar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.workbar-view {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.workbar-view[hidden] { display: none; }
+.commit-group {
+  display: flex;
+  gap: 0.4rem;
+  padding-left: 0.8rem;
+  border-left: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+/* Stufe E: erscheint nur, wenn Zeilen ausgewaehlt sind (siehe
+   renderSelectionBar) - Sammelaktionen fuer die Auswahl statt fuer eine
+   ganze Domain-Gruppe. Gleiche visuelle Sprache wie .commit-group/
+   .decision-buttons, damit sie nicht wie ein neues Bauteil wirkt. */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.6rem;
+  background: var(--signal-soft);
+  border: 1px solid var(--signal);
+  border-radius: var(--radius-lg);
+}
+.selection-bar[hidden] { display: none; }
+.selection-count { font-weight: 600; font-size: 0.85rem; margin-right: 0.2rem; }
+
+/* ---- Ansichten ---- */
+
+.view[hidden] { display: none; }
+#app-main { padding-top: 1rem; }
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0 0 0.7rem;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.section-head p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.count-pill {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
+/* Die Sprungleiste zu den Domain-Gruppen ist ersatzlos entfallen: sie
+   wiederholte die Gruppenueberschriften, die unmittelbar darunter ohnehin
+   sichtbar sind, und das Filterfeld daneben erledigt dieselbe Aufgabe
+   schneller (drei Buchstaben tippen statt eine Chip-Reihe absuchen). Sie war
+   ausserdem nicht sticky, also genau dort nutzlos, wo man sie gebraucht
+   haette - nach dem Scrollen. */
+
+/* ---- Domain-Gruppen ---- */
+
+/* Vorherige Iteration begrenzte hier die GESAMTE Zeile auf 75% Breite -
+   das war eine Fehlinterpretation des Nutzer-Feedbacks. Gemeint war: die
+   Zeile nutzt die volle Breite, aber INNERHALB der Zeile bekommt der
+   Aktionsbereich (Wiedervorlage + Entscheidungsknoepfe) eine reservierte
+   Zone von ~30%, der Link/Titel den Rest - mit einem Trenner dazwischen
+   (siehe .tab-row .title-block / .row-actions unten). Volle Breite bleibt
+   hier, die 70/30-Aufteilung passiert jetzt auf Zeilenebene. */
+.domain-group {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  /* Ueberspringt Layout/Paint fuer Gruppen ausserhalb des Sichtbereichs -
+     render() baut bei jeder Aenderung weiterhin das komplette DOM neu auf
+     (siehe app.js), aber der Browser muss nur noch das tatsaechlich
+     Sichtbare layouten. contain-intrinsic-size ist nur die Anfangsschaetzung
+     fuer die Scrollbar-Groesse, bevor eine Gruppe zum ersten Mal sichtbar
+     war - danach merkt sich Chromium die echte Groesse.
+     ponytail: kein JS-Aufwand noetig; Virtualisierung erst wenn das nicht reicht. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+.domain-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+  background: var(--sunken);
+  border-bottom: 1px solid var(--line);
+}
+.domain-group.collapsed .domain-header { border-bottom: none; }
+
+.domain-header .chevron {
+  font-family: var(--font-mono);
+  color: var(--ink-soft);
+  width: 0.9em;
+  display: inline-block;
+  transition: transform 150ms ease;
+}
+.domain-group.collapsed .chevron { transform: rotate(-90deg); }
+
+.domain-header .favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+.domain-header .name { font-weight: 600; }
+.domain-header .count {
+  font-family: var(--font-mono);
+  color: var(--ink-soft);
+  font-size: 0.76rem;
+  flex: 1;
+}
+.domain-header .count.decided { color: var(--keep-text); }
+
+/* Vier "Alle: X"-Knoepfe mal dreizehn Gruppen waren im Ruhezustand ueber
+   fuenfzig konkurrierende Ziele. Sie erscheinen jetzt erst bei Absicht -
+   Platz bleibt reserviert, damit beim Zeigen nichts springt.
+   wb-audit-Fund W4: opacity allein macht Elemente nur unsichtbar, nicht
+   unfokussierbar - die vier Knoepfe blieben per Tab erreichbar, obwohl
+   nicht zu sehen (bei 13 Gruppen 52 unsichtbare Tab-Stopps vor der ersten
+   echten Zeile). visibility nimmt sie zusaetzlich aus der Tab-Reihenfolge;
+   der verzoegerte transition-delay laesst den Opacity-Fade weiterhin
+   sichtbar ablaufen, statt hart umzuspringen. */
+.domain-header .group-actions {
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 120ms ease, visibility 0s linear 120ms;
+}
+.domain-header:hover .group-actions,
+.domain-header:focus-within .group-actions {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.domain-header .group-actions button {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.7rem;
+  border-color: var(--line);
+}
+
+.domain-group.collapsed .domain-rows { display: none; }
+
+/* ---- Zeilen ---- */
+
+.tab-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 0.9rem 0.7rem 1.9rem;
+  border-bottom: 1px solid var(--line);
+  transition: background 100ms ease;
+}
+.tab-row:last-child { border-bottom: none; }
+.tab-row:hover, .tab-row:focus-visible { background: var(--signal-soft); }
+.tab-row:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+
+.tab-row .swatch {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--line-strong);
+}
+
+/* Stufe E (Mehrfachauswahl): Checkbox je Zeile bzw. je Domain-Gruppe -
+   dieselbe accent-color wie die Filter-Checkboxen, damit sie als
+   zusammengehoerig erkennbar sind. */
+.row-select, .group-select { accent-color: var(--signal); width: 1rem; height: 1rem; flex-shrink: 0; }
+.group-select { margin-right: 0.2rem; }
+.tab-row.decision-keep .swatch { background: var(--keep); }
+.tab-row.decision-pc .swatch { background: var(--pc); }
+.tab-row.decision-archive .swatch { background: var(--archive); }
+.tab-row.decision-drop .swatch { background: var(--drop); }
+.swatch.pc { background: var(--pc); }
+.swatch.archive { background: var(--archive); }
+.swatch.drop { background: var(--drop); }
+
+/* 70/30-Aufteilung wie vom Nutzer vorgegeben: title-block bekommt eine
+   Basis von 70% der Zeile (waechst/schrumpft von dort aus mit), .row-actions
+   (siehe unten) reserviert die restlichen ~30% fuer Wiedervorlage +
+   Entscheidungsknoepfe, mit einem Trenner dazwischen - nicht die ganze
+   Zeile schmaler machen (siehe .domain-group/.flat-list oben). */
+.tab-row .title-block {
+  flex: 1 1 70%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 0 1 30%;
+  min-width: 0;
+  padding-left: 0.9rem;
+  margin-left: 0.2rem;
+  border-left: 1px solid var(--line);
+}
+.tab-row .title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.tab-row .title-block a {
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tab-row .title-block a:hover { text-decoration: underline; }
+.tab-row .url {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Domain-Teil ist in der Gruppenueberschrift bereits sichtbar, aber in der
+   einzelnen Zeile hilft die Betonung beim schnellen Erfassen, wo man ist -
+   der Pfad/Query-Rest ist meist das eigentlich variable/uninteressante Stueck. */
+.tab-row .url .url-origin { color: var(--ink); opacity: 0.8; }
+.tab-row .url .url-path { opacity: 0.55; }
+
+.tab-row .dup-badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  flex-shrink: 0;
+}
+.seen-before-badge {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  margin-left: 0.35rem;
+}
+
+/* Wiedervorlage ist eine seltene Aktion - vorher stand in JEDER Zeile ein
+   dauerhaft sichtbares Datumsfeld, breiter als die vier Entscheidungsknoepfe
+   zusammen. Das war zu viel Gewicht fuer die seltene Aktion. Nutzer-Feedback
+   nach echter Nutzung: der schmale Knopf, der davor nur bei Zeigen/Fokus
+   erschien, war dadurch zu leicht zu uebersehen - jetzt dauerhaft sichtbar,
+   mit eigenem Rahmen statt nur Text, damit er als Schaltflaeche erkennbar
+   ist. Das native Feld blendet weiterhin an Ort und Stelle ein (Taste W). */
+.snooze-slot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 2.3rem;
+  justify-content: flex-end;
+  position: relative; /* Anker fuer .snooze-menu */
+}
+.snooze-btn {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  border-color: var(--line-strong);
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.snooze-btn:hover { background: var(--sunken); border-color: var(--signal); color: var(--ink); }
+.snooze-btn[data-set="true"] { border-color: var(--signal); color: var(--signal-text); background: var(--signal-soft); }
+
+.copy-btn {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  border-color: var(--line-strong);
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.copy-btn:hover { background: var(--sunken); border-color: var(--signal); color: var(--ink); }
+
+/* Datums-Schnellmenue (Morgen/Naechste Woche/Monat/Datum waehlen) - schwebt
+   ueber der Zeile statt den Zeilenfluss zu sprengen, dieselbe Anzahl an
+   Optionen wuerde inline die enge 30%-Aktionszone (.row-actions) sprengen. */
+.snooze-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.3rem;
+  min-width: 9.5rem;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  z-index: 5;
+}
+.snooze-menu button {
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.8rem;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--ink);
+}
+.snooze-menu button:hover { background: var(--sunken); }
+.snooze-menu .snooze-clear {
+  color: var(--ink-soft);
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  margin-top: 0.15rem;
+  padding-top: 0.5rem;
+}
+
+.snooze-input {
+  width: 8.4rem;
+  padding: 0.22rem 0.35rem;
+  border: 1px solid var(--signal);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+}
+
+/* Nutzer-Feedback nach echter Nutzung: die Knoepfe wirkten im Ruhezustand
+   zu sehr wie neutrale Umrandungen, nicht wie eigene Schaltflaechen fuer
+   "Handy + PC"/"Nur PC"/... - jede traegt jetzt schon vor dem Anklicken die
+   Farbe ihres Zustands (Rand + Icon), aktiv wird daraus eine gefuellte
+   Flaeche. Groesser als vorher fuer ein klareres Klickziel.
+   wb-audit-Folgefund: Buchstaben-Kuerzel (B/P/A/V) auf den Knoepfen selbst
+   erschlossen sich niemandem, der die App nicht selbst gebaut hat - jetzt
+   Icons (svg, currentColor), Kuerzel + voller Name stehen im title/aria-label. */
+.decision-buttons { display: flex; gap: 0.35rem; flex-shrink: 0; }
+.decision-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.6rem;
+  min-width: 2.3rem;
+  min-height: 2.3rem;
+  border-width: 1.5px;
+  border-color: var(--line-strong);
+}
+.decision-buttons button svg { display: block; }
+.decision-buttons button.keep { border-color: var(--keep); color: var(--keep-text); }
+.decision-buttons button.pc { border-color: var(--pc); color: var(--pc-text); }
+.decision-buttons button.archive { border-color: var(--archive); color: var(--archive-text); }
+.decision-buttons button.drop { border-color: var(--drop); color: var(--drop-text); }
+.decision-buttons button.active.keep { background: var(--keep-soft); border-color: var(--keep); color: var(--keep-text); }
+.decision-buttons button.active.pc { background: var(--pc-soft); border-color: var(--pc); color: var(--pc-text); }
+.decision-buttons button.active.archive { background: var(--archive-soft); border-color: var(--archive); color: var(--archive-text); }
+.decision-buttons button.active.drop { background: var(--drop-soft); border-color: var(--drop); color: var(--drop-text); }
+
+/* ---- Flache Listen (Am PC / Wiedervorlage / Verschwunden / Archiv) ----
+   Kein Domain-Kasten drumherum: hier sind es typischerweise wenige Eintraege,
+   und die Domain ist nicht die Ordnungsgroesse. */
+
+.flat-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.flat-list .tab-row { padding-left: 0.75rem; }
+
+/* Gleicher Trenner-Gedanke wie .row-actions, aber ohne harte 30%-Decke -
+   das Notizfeld (14rem) plus zwei Knoepfe braucht mehr Raum, als eine starre
+   Prozentgrenze auf schmaleren Desktop-Fenstern hergeben wuerde. */
+.side-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+  padding-left: 0.9rem;
+  margin-left: 0.2rem;
+  border-left: 1px solid var(--line);
+}
+.side-actions button { padding: 0.3rem 0.55rem; font-size: 0.76rem; }
+.side-actions .note-input {
+  width: 14rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sunken);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-family: var(--font-ui);
+}
+.side-actions .note-input:focus-visible { background: var(--card); }
+
+/* ---- Filter-Seitenleiste ----
+   Nutzer-Wunsch: Filtern nach Zustand, aber als ausklappbare Seitenleiste
+   statt weiterer Knoepfe in der ohnehin schon vollen Werkzeugleiste. Bleibt
+   permanent im DOM (kein hidden-Toggle) und faehrt per transform seitlich
+   ein/aus, damit sie animiert statt hart umzuspringen - inert statt eines
+   Fokus-Fallen-Konstrukts haelt sie ausserhalb ihres offenen Zustands aus
+   der Tab-Reihenfolge heraus (natives HTML-Attribut, in jedem Chromium
+   vorhanden - diese App laeuft ausschliesslich als Chrome-/Edge-Fenster). */
+.filter-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 17rem;
+  max-width: 85vw;
+  background: var(--card);
+  border-left: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-float);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 200ms ease;
+}
+.filter-sidebar.open { transform: translateX(0); }
+
+.filter-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.filter-sidebar-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.filter-sidebar-body {
+  padding: 0.4rem 0.4rem;
+  overflow-y: auto;
+}
+.filter-sidebar-heading {
+  margin: 0.6rem 0.6rem 0.2rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+.filter-sidebar-heading:first-child { margin-top: 0.3rem; }
+
+.filter-check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.86rem;
+}
+.filter-check:hover { background: var(--sunken); }
+.filter-check input { accent-color: var(--signal); width: 1.05rem; height: 1.05rem; flex-shrink: 0; }
+.filter-check .dot {
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--line-strong);
+}
+.filter-check .dot.keep { background: var(--keep); }
+.filter-check .dot.pc { background: var(--pc); }
+.filter-check .dot.archive { background: var(--archive); }
+.filter-check .dot.drop { background: var(--drop); }
+.filter-check .count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.filter-sidebar-foot {
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--line);
+}
+.filter-sidebar-foot button { width: 100%; font-size: 0.78rem; }
+
+/* Zeigt, ob gerade eingeschraenkt gefiltert wird, ohne die Seitenleiste
+   aufklappen zu muessen. */
+#filterToggleBtn[data-active="true"] {
+  border-color: var(--signal);
+  color: var(--signal-text);
+  background: var(--signal-soft);
+}
+
+.row-note {
+  font-size: 0.74rem;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.missing-hint {
+  font-family: var(--font-mono);
+  font-size: 0.71rem;
+  color: var(--ink-soft);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.missing-hint.urgent { color: var(--drop-text); }
+
+.kind-tag {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.kind-tag.archived { background: var(--archive-soft); color: var(--archive-text); border-color: var(--archive); }
+.kind-tag.dropped { background: var(--drop-soft); color: var(--drop-text); border-color: var(--drop); }
+.kind-tag.done { background: var(--pc-soft); color: var(--pc-text); border-color: var(--pc); }
+
+/* ---- Leerzustaende: sagen, was als Naechstes zu tun ist ---- */
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--ink-soft);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+.empty-state .empty-title {
+  display: block;
+  font-family: var(--font-display);
+  font-variation-settings: 'wdth' 88;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+}
+.empty-state .empty-body { font-size: 0.86rem; line-height: 1.5; }
+
+/* ---- Legende: einmal gelesen, danach zugeklappt ---- */
+
+.legend-details {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow: hidden;
+}
+.legend-details > summary {
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  user-select: none;
+}
+.legend-details > summary:hover { color: var(--ink); }
+.legend-details[open] > summary { border-bottom: 1px solid var(--line); }
+.legend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.7rem 1.2rem;
+  padding: 0.85rem;
+}
+.legend-item { display: flex; gap: 0.55rem; align-items: baseline; }
+.legend-item .key {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 0 0.4rem;
+  flex-shrink: 0;
+}
+.legend-item .legend-text { font-size: 0.84rem; color: var(--ink-soft); line-height: 1.45; }
+.legend-item .legend-text b { color: var(--ink); }
+
+.hint {
+  font-family: var(--font-mono);
+  font-size: 0.71rem;
+  color: var(--ink-soft);
+  margin: 0.9rem 0 0;
+}
+
+/* ---- Vorgemerkt-Ablage: Kopfzeile (Verbindungsstatus + Uebertragen-Knopf)
+   und Gruppenueberschriften je Entscheidung. */
+.pending-status { font-size: 0.82rem; color: var(--ink-soft); }
+.pending-status.urgent { color: var(--drop-text); }
+.state-group-heading {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.state-group-heading:first-of-type { margin-top: 0.3rem; }
+
+/* ---- Fortschritt ---- */
+
+.progress-panel {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem 1.2rem;
+  box-shadow: var(--shadow-float);
+  min-width: 340px;
+  display: none;
+  z-index: 90;
+}
+.progress-panel.active { display: block; }
+.progress-panel .label {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  margin-bottom: 0.4rem;
+  display: flex;
+  justify-content: space-between;
+}
+.progress-panel .bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sunken);
+  overflow: hidden;
+}
+.progress-panel .bar .fill {
+  height: 100%;
+  width: 100%;
+  background: var(--signal);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 150ms ease;
+}
+
+/* ---- Meldungen ---- */
+
+#toasts {
+  position: fixed;
+  top: 1.25rem;
+  right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 100;
+}
+.toast {
+  position: relative;
+  background: var(--ink);
+  color: var(--ground);
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.82rem;
+  max-width: 340px;
+  box-shadow: var(--shadow-float);
+  animation: toast-in 180ms ease;
+}
+.toast.error { background: var(--drop-text); color: #fff; }
+.toast.warning {
+  background: var(--archive-text);
+  color: #fff;
+  max-width: 400px;
+  padding-right: 2rem;
+}
+.toast-close {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.4rem;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0.2rem 0.4rem;
+  opacity: 0.8;
+}
+.toast-close:hover { opacity: 1; border-color: transparent; }
+.toast-action {
+  display: block;
+  margin-top: 0.45rem;
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.6rem;
+  opacity: 0.9;
+}
+.toast-action:hover { opacity: 1; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Einrichtungsassistent ---- */
+
+.wizard {
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--ink);
+  width: min(480px, 92vw);
+  box-shadow: var(--shadow-float);
+}
+.wizard::backdrop { background: rgba(16, 18, 22, 0.55); }
+.wizard-body { padding: 1.4rem 1.5rem 1rem; }
+.wizard-body h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.15rem;
+  font-family: var(--font-display);
+  font-variation-settings: 'wdth' 88;
+  font-weight: 700;
+}
+.wizard-body p { margin: 0 0 0.7rem; line-height: 1.55; font-size: 0.9rem; }
+.wizard-body code {
+  font-family: var(--font-mono);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85em;
+}
+.wizard-icon { width: 2.2rem; height: 2.2rem; color: var(--signal); margin-bottom: 0.6rem; }
+.wizard-icon svg { width: 100%; height: 100%; }
+.wizard-hint { font-size: 0.8rem; color: var(--ink-soft); }
+.wizard-live {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--signal-text);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.wizard-live::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: wizard-pulse 1.4s ease-in-out infinite;
+}
+@keyframes wizard-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+.wizard-regression {
+  font-size: 0.8rem;
+  color: var(--drop-text);
+  background: var(--drop-soft);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.7rem;
+}
+.wizard-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+/* Drahtlose Verbindung: Opt-in-Bereich unterhalb der Schritte, eingeklappt */
+.wireless-panel { border-top: 1px solid var(--line); }
+.wireless-panel > summary {
+  padding: 0.7rem 1.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.wireless-panel > summary:hover { color: var(--ink); }
+.wireless-body { padding: 0 1.5rem 1rem; }
+.wireless-warn {
+  margin: 0 0 0.7rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--drop-text);
+  background: var(--drop-soft);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.7rem;
+}
+.wireless-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+}
+.wireless-step {
+  margin: 0.8rem 0 0.35rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.wireless-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.wireless-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+.wireless-field input {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  width: 9.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--sunken);
+  color: var(--ink);
+}
+.wizard-progress { font-family: var(--font-mono); font-size: 0.75rem; color: var(--ink-soft); }
+.wizard-skip { background: transparent; border-color: transparent; color: var(--ink-soft); }
+
+/* ---- Schmale Fenster ---- */
+
+@media (max-width: 780px) {
+  body { padding: 0 0.9rem 4rem; }
+  .deck { margin: 0 -0.9rem; padding: 0 0.9rem 0.75rem; }
+  .commit-group { padding-left: 0; border-left: none; width: 100%; }
+  .tab-row { flex-wrap: wrap; padding-left: 0.75rem; }
+  .tab-row .title-block { flex-basis: 100%; order: -1; }
+  /* Der Trenner zwischen Link und Aktionszone (siehe .row-actions/
+     .side-actions) ergibt nur nebeneinander einen Sinn - umgebrochen auf
+     eine eigene Zeile waere die linke Randlinie nur noch Dekoration ohne
+     erkennbaren Zweck. */
+  .row-actions, .side-actions {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    border-left: none;
+    padding-left: 0;
+    margin-left: 0;
+  }
+  /* Zeitstempel unter die Legende statt daneben - nebeneinander draengeln
+     sich beide auf schmalen Fenstern ineinander. */
+  .strip-foot { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .strip-meta { margin-left: 0; }
+  .side-actions .note-input { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .strip span,
+  .domain-header .chevron,
+  .tab-row,
+  .snooze-btn,
+  .domain-header .group-actions,
+  .progress-panel .bar .fill { transition: none; }
+  .wizard-live::before { animation: none; }
+  .toast { animation: none; }
+}

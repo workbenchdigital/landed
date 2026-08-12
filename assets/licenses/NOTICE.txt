@@ -1,0 +1,14 @@
+Landed für Android/Chrome bündelt folgende Drittkomponenten:
+
+1. Node.js (node.exe, eingebettet als Single Executable Application)
+   Lizenz: MIT (plus diverse gebündelte Drittlizenzen)
+   Siehe: NODEJS-LICENSE.txt
+   Projekt: https://nodejs.org/
+
+2. Android SDK Platform-Tools (adb.exe, AdbWinApi.dll, AdbWinUsbApi.dll)
+   Lizenz: Apache License 2.0
+   Siehe: APACHE-2.0.txt und PLATFORM-TOOLS-NOTICE.txt
+   Projekt: https://developer.android.com/tools/releases/platform-tools
+
+Der eigene Quellcode von Landed liegt unter derselben Lizenz wie im
+Projekt-Repository angegeben.

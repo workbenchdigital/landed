@@ -1,0 +1,18 @@
+# Laufzeitdaten - enthaelt echte, persoenliche Tab-Titel und URLs
+data/
+
+# Tool-Caches
+.impeccable/
+node_modules/
+
+# Build-Artefakte (tools/build.mjs) - ~100 MB, immer neu erzeugbar
+build/
+dist/
+
+# Scratch/Debug-Artefakte
+*.log
+platform-tools-cache/
+.platform-tools-download-tmp/
+
+# Isolierte Agent-Worktrees (Claude Code) - eigene node_modules/build-Kopien, nie Projektinhalt
+.claude/worktrees/

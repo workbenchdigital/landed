@@ -1,0 +1,21 @@
+{
+  "name": "landed",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Landed for Android/Chrome - lokales Werkzeug zum Verwalten von Android-Chrome-Tabs vom PC aus. Kein Root; USB als Standard, Wireless-ADB nur als Opt-in (TLS-Pairing, nie adb tcpip). Deutsch/Englisch umschaltbar.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test",
+    "build": "node tools/build.mjs",
+    "release": "node tools/release.mjs",
+    "installer": "node tools/build-installer.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "rcedit": "^5.0.2"
+  }
+}
