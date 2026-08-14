@@ -4,7 +4,7 @@
   <img src="assets/landed-logo-banner.svg" alt="Landed Logo" width="96">
 </p>
 
-<h1 align="center">Landed — for Android/Chrome</h1>
+<h1 align="center">Landed - for Android/Chrome</h1>
 
 <p align="center">
   Holt die Tabs, die eigentlich "noch am PC gemacht werden müssen", vom Handy auf den PC:
@@ -13,22 +13,22 @@
 </p>
 
 <p align="center">
-  Kostenlos und Open Source unter der <a href="LICENSE">MIT-Lizenz</a>. Spart es dir Zeit? ☕ <a href="https://buymeacoffee.com/workbenchdigital">Buy Me a Coffee</a> — freiwillig, kein Feature-Unlock.
+  Kostenlos und Open Source unter der <a href="LICENSE">MIT-Lizenz</a>. Spart es dir Zeit? ☕ <a href="https://buymeacoffee.com/workbenchdigital">Buy Me a Coffee</a>, freiwillig, kein Feature-Unlock.
 </p>
 
 ## Screenshots
 
 *(Alle Screenshots zeigen erfundene Beispieldaten, keinen echten Tab-Bestand.)*
 
-| Sichten — nach Domain gruppiert, mit Filter und Suche | Am PC — dieselbe Filter-/Gruppierlogik jetzt überall |
+| Sichten, nach Domain gruppiert, mit Filter und Suche | Am PC, dieselbe Filter-/Gruppierlogik jetzt überall |
 |---|---|
 | ![Sichten](docs/screenshots/de/triage.png) | ![Am PC](docs/screenshots/de/do-on-pc.png) |
 
-| Vorgemerkt — entschieden, am Handy noch nicht geschlossen | Wiedervorlage — fällig/überfällig klar markiert |
+| Vorgemerkt, entschieden, am Handy noch nicht geschlossen | Wiedervorlage, fällig/überfällig klar markiert |
 |---|---|
 | ![Vorgemerkt](docs/screenshots/de/pending.png) | ![Wiedervorlage](docs/screenshots/de/snoozed.png) |
 
-| Drahtlose Verbindung — Opt-in, standardmäßig aus | Dunkelmodus |
+| Drahtlose Verbindung, Opt-in, standardmäßig aus | Dunkelmodus |
 |---|---|
 | ![Wireless-ADB-Panel](docs/screenshots/de/wireless-adb.png) | ![Dunkelmodus](docs/screenshots/de/dark-mode.png) |
 
@@ -36,11 +36,11 @@
 
 **Als `Landed.exe` (Release-ZIP):** nur ein Android-Gerät mit aktiviertem
 USB-Debugging, per USB verbunden. Node und die Android Platform-Tools (`adb`)
-sind in der `.exe` bzw. im `platform-tools\`-Ordner daneben bereits enthalten
-— nichts zu installieren.
+sind in der `.exe` bzw. im `platform-tools\`-Ordner daneben bereits enthalten,
+nichts zu installieren.
 
 **Aus dem Quellcode:**
-- Node.js 22+ (getestet mit v26 — braucht eingebautes `fetch` und `WebSocket`)
+- Node.js 22+ (getestet mit v26, braucht eingebautes `fetch` und `WebSocket`)
 - `adb` (Android Platform-Tools) im PATH, oder Pfad über `ADB_PATH` setzen
 - Android-Gerät mit aktiviertem USB-Debugging, per USB verbunden
 
@@ -64,35 +64,35 @@ anlegen (serverseitig, kein separates VBS-Skript mehr).
    noch keine Einrichtung abgeschlossen ist. Er führt live (per Polling gegen
    `POST /api/health`) durch USB-Debugging aktivieren, Kabel verbinden,
    Autorisierungsdialog bestätigen und Chromes Tab-Declutter deaktivieren
-   (siehe „Bekannte Grenzen" unten) — jeder Schritt hat zusätzlich einen
+   (siehe „Bekannte Grenzen" unten), jeder Schritt hat zusätzlich einen
    manuellen „Weiter"-Knopf. Überspringen zählt als abgeschlossen; über den
    „Einrichtung"-Knopf im Header jederzeit erneut aufrufbar.
 2. **App starten** über die Desktop-Verknüpfung (aus dem Assistenten anlegbar)
    oder Doppelklick auf `Landed.exe`, bzw. aus dem Quellcode mit `npm start`.
    Browser öffnet sich automatisch bei der paketierten App, sonst manuell
    `http://127.0.0.1:7890` aufrufen.
-3. **„Bestand einlesen"** klicken — liest alle aktiven Tabs über CDP
-   (`/json/list`), merged sie in den bestehenden Bestand (kein Ersetzen —
+3. **„Bestand einlesen"** klicken, liest alle aktiven Tabs über CDP
+   (`/json/list`), merged sie in den bestehenden Bestand (kein Ersetzen;
    verschwundene Tabs werden nicht sofort als „weg" gewertet, siehe unten),
    gruppiert nach Domain, dedupliziert nach normalisierter URL.
-4. Pro Tab oder pro Domain-Gruppe entscheiden — jede Option sagt, wo der Link
+4. Pro Tab oder pro Domain-Gruppe entscheiden, jede Option sagt, wo der Link
    danach liegt, nicht nur welche Aktion sie auslöst (die Legende in der App
    erklärt jede Option ausführlicher):
-   - **Handy + PC (B)** — Tab bleibt am Handy offen, Link bleibt in „Sichten".
-   - **Nur PC (P)** — Tab wird am Handy geschlossen, bleibt aber als eigene
+   - **Handy + PC (B)**: Tab bleibt am Handy offen, Link bleibt in „Sichten".
+   - **Nur PC (P)**: Tab wird am Handy geschlossen, bleibt aber als eigene
      Arbeitsliste „Am PC erledigen" in der App bestehen (Notiz, Wiedervorlage,
      „erledigt"/„zurück aufs Telefon").
-   - **Archiv (A)** — Tab wird am Handy geschlossen, bleibt aber dauerhaft
+   - **Archiv (A)**: Tab wird am Handy geschlossen, bleibt aber dauerhaft
      durchsuchbar im Archiv.
-   - **Verwerfen (V)** — Tab wird am Handy geschlossen, bleibt gespeichert,
-     aber nur zur Wiedererkennung (↺-Badge bei erneutem Auftauchen) — in der
-     Archivsuche per Default ausgeblendet, Schalter „auch Verworfene zeigen"
+   - **Verwerfen (V)**: Tab wird am Handy geschlossen, bleibt gespeichert,
+     aber nur zur Wiedererkennung (↺-Badge bei erneutem Auftauchen), in der
+     Archivsuche per Default ausgeblendet; Schalter „auch Verworfene zeigen"
      blendet sie ein.
    Buttons oder Tastaturkürzel B/P/A/V auf der fokussierten Zeile, ↑/↓ zum
    Wandern. Die Sortierleiste oben zeigt den Fortschritt über den ganzen Bestand.
-   Entschiedene Tabs (außer „Handy + PC" — die bleiben ja sichtbar) verschwinden
+   Entschiedene Tabs (außer „Handy + PC", die bleiben ja sichtbar) verschwinden
    sofort aus „Sichten" in den Reiter „Vorgemerkt".
-5. **Reiter „Vorgemerkt"** — alle entschiedenen Tabs, die am Handy noch offen
+5. **Reiter „Vorgemerkt"**: alle entschiedenen Tabs, die am Handy noch offen
    sind, nach Entscheidung gruppiert. Ein Knopf **„Auf Handy übertragen"**
    schließt die zum Schließen vorgemerkten Tabs UND öffnet „Handy + PC"-Tabs,
    die dort noch fehlen, in einem Schritt (deckt sich mit der alten
@@ -100,7 +100,7 @@ anlegen (serverseitig, kein separates VBS-Skript mehr).
    Handy ist der Knopf deaktiviert statt eine Fehlermeldung erst nach dem
    Klick zu zeigen. Vor dem Schließen wird automatisch ein Snapshot des
    aktuellen Bestands nach `backups/` geschrieben.
-6. **Mehrfachauswahl** — Checkbox je Zeile bzw. „alle in dieser Gruppe";
+6. **Mehrfachauswahl**: Checkbox je Zeile bzw. „alle in dieser Gruppe";
    ausgewählte Tabs lassen sich gemeinsam entscheiden, kopieren
    (`navigator.clipboard`) oder als Markdown-Liste bzw. Netscape-
    Lesezeichendatei exportieren.
@@ -108,9 +108,9 @@ anlegen (serverseitig, kein separates VBS-Skript mehr).
 **Wiedervorlage:** ⏰-Knopf öffnet ein Datums-Schnellmenü (Morgen/Nächste
 Woche/Monat/Datum wählen). Aus „Sichten" bringt ein Datum den Tab zusätzlich
 in „Nur PC" (Wiedervorlage = „Nur PC" + Datum, kein eigener Zustand); bei
-bereits entschiedenen Tabs ändert sich nur das Datum — bestehende Aufgaben
+bereits entschiedenen Tabs ändert sich nur das Datum, bestehende Aufgaben
 lassen sich so vertagen. Zurückgestellte Tabs verschwinden aus allen anderen
-Listen, bleiben aber im eigenen Bereich „Wiedervorlage" sichtbar — auch nach
+Listen, bleiben aber im eigenen Bereich „Wiedervorlage" sichtbar, auch nach
 Fälligkeit (fällig/überfällig deutlich markiert, nach Datum sortiert), bis sie
 über „Jetzt anzeigen" bewusst quittiert werden. Ein Banner beim Öffnen der App
 weist auf Fälliges hin.
@@ -125,30 +125,30 @@ der Header einen Umschalter (sonst unsichtbar, kein zusätzlicher Klick im
 Ein-Geräte-Regelfall). Jedes Gerät bekommt seinen eigenen Bestand unter
 `devices/<seriennummer>/` und lässt sich über den Stift-Knopf daneben
 umbenennen. Es läuft dabei immer nur eine ADB-Sitzung gegen genau ein
-aktives Gerät gleichzeitig — kein paralleles Fernsteuern zweier Handys.
+aktives Gerät gleichzeitig, kein paralleles Fernsteuern zweier Handys.
 
 **Drahtlose Verbindung (Opt-in, standardmäßig AUS):** Landed arbeitet im
 Auslieferungszustand ausschließlich über USB. Wer will, kann im
-Einrichtungsassistenten unter „Drahtlose Verbindung" den Schalter umlegen —
+Einrichtungsassistenten unter „Drahtlose Verbindung" den Schalter umlegen;
 erst dann akzeptiert Landed überhaupt drahtlos verbundene Geräte, und erst
 dann sind die Endpunkte zum Koppeln/Verbinden nutzbar. Genutzt wird
 ausschließlich der moderne Android-11+-Weg: einmalig `adb pair <ip:port>
 <code>` mit dem 6-stelligen Code aus `Entwickleroptionen → Wireless-Debugging
 → Gerät mit Kopplungscode koppeln` (TLS-authentifiziert), danach `adb connect
-<ip:port>`. IP, Port und Code werden von Hand eingetippt — kein mDNS-Scan, kein
+<ip:port>`. IP, Port und Code werden von Hand eingetippt, kein mDNS-Scan, kein
 automatisches Verbinden. Der Code ist einmalig und wird von Landed nirgends
 gespeichert; den ausgetauschten Schlüssel verwaltet `adb` selbst. Gemerkt wird
 nur die zuletzt verbundene `ip:port`, um das Feld vorzubelegen.
 
 Der Trade-off, den man damit bewusst eingeht: eine USB-Verbindung endet am
-Kabel, eine drahtlose ist im ganzen WLAN sichtbar. Deshalb nur im eigenen,
-vertrauenswürdigen Netz benutzen — nicht in Gäste-, Firmen- oder öffentlichen
-WLANs — und „Wireless-Debugging" am Telefon wieder ausschalten, sobald es nicht
+Kabel; eine drahtlose ist im ganzen WLAN sichtbar. Deshalb nur im eigenen,
+vertrauenswürdigen Netz benutzen, nicht in Gäste-, Firmen- oder öffentlichen
+WLANs, und „Wireless-Debugging" am Telefon wieder ausschalten, sobald es nicht
 gebraucht wird.
 
 **Nicht implementiert und bewusst nicht vorgesehen:** der alte
 `adb tcpip <port>`-Modus. Der lässt das Telefon nach dem Trennen
-unauthentifiziert für jedes Gerät im selben WLAN offen — eine eigene,
+unauthentifiziert für jedes Gerät im selben WLAN offen. Das ist eine eigene,
 ältere Klasse von Wireless-ADB-Risiko, die Landed vollständig vermeidet,
 indem es dafür gar keinen Bedienweg bietet.
 
@@ -158,12 +158,12 @@ adb shell getprop ro.build.version.security_patch
 ```
 Sollte `2026-05-01` oder neuer sein. CVE-2026-0073 ist eine kritische
 (CVSS 9.8), Zero-Click-Authentifizierungsumgehung in `adbd`s eigener
-TLS-Zertifikatsprüfung (ein Logikfehler in `adbd_tls_verify_cert`) — sie
+TLS-Zertifikatsprüfung (ein Logikfehler in `adbd_tls_verify_cert`). Sie
 betrifft den *modernen* Pairing-Flow, den Landeds Opt-in tatsächlich nutzt,
 nicht nur den alten `tcpip`-Weg. Gepatchte Versionen (2026-05-01 oder neuer)
 beheben die Prüflogik selbst. Auf einem ungepatchten Telefon bleibt das
 Einschalten von Wireless-Debugging riskant, unabhängig davon, welches
-Werkzeug die Verbindung aufbaut — Landeds TLS-Pairing-only-Design hält die
+Werkzeug die Verbindung aufbaut. Landeds TLS-Pairing-only-Design hält die
 Verbindung von der älteren, unauthentifizierten Angriffsfläche fern, macht
 ein ungepatchtes Gerät aber nicht von allein sicher. Patchstand *vor* dem
 Einschalten des Opt-in prüfen, nicht danach. Der Einrichtungsassistent zeigt
@@ -171,13 +171,13 @@ ihn zur Orientierung auf der letzten Seite an.
 
 ## Sicherheit
 
-- Server bindet ausschließlich an `127.0.0.1` — kein Netzwerk-Exposure.
+- Server bindet ausschließlich an `127.0.0.1`, kein Netzwerk-Exposure.
 - USB-ADB im Standardzustand. Drahtlose Verbindungen nur nach ausdrücklichem
   Opt-in in den Einstellungen, und dann ausschließlich über den
-  TLS-Pairing-Flow (`adb pair` + `adb connect`) — nie über `adb tcpip`.
-- Das schützt für sich genommen **nicht** vor CVE-2026-0073 — die liegt in
+  TLS-Pairing-Flow (`adb pair` + `adb connect`), nie über `adb tcpip`.
+- Das schützt für sich genommen **nicht** vor CVE-2026-0073, die liegt in
   genau der TLS-Prüfung, auf die sich `adb pair`/`adb connect` verlassen.
-  Nur der Patchstand des Geräts schützt davor (siehe oben) — vor dem
+  Nur der Patchstand des Geräts schützt davor (siehe oben), vor dem
   Einschalten des Opt-in prüfen.
 - Der Pairing-Code wird nur an `adb` durchgereicht und nie gespeichert.
   IP/Port/Code werden vor jedem `adb`-Aufruf gegen ein striktes Muster geprüft.
@@ -188,16 +188,16 @@ ihn zur Orientierung auf der letzten Seite an.
 
 ## Bekannte Grenzen (Stand 07.08.2026, empirisch getestet)
 
-- **Deckung ist NICHT robust gegenüber Chromes „Tab Declutter"-Feature (Android) —
+- **Deckung ist NICHT robust gegenüber Chromes „Tab Declutter"-Feature (Android):
   Ursache durch Webrecherche vom 08.08.2026 bestätigt, nicht nur vermutet.**
   Ursprünglich wurde ein Rückgang nach einem `adb shell am force-stop
   com.android.chrome` + Neustart beobachtet (255 → 143 Tabs, −43 %, stabil
   über mehrere Minuten/Scans). Ein späterer Live-Test an einem reelen Bestand
   bestätigte exakt: CDP fand 159 Tabs, während das Gerät 159 aktive + 115
-  „inaktive" Tabs auswies — die Differenz deckt sich exakt. Root Cause: Chrome
+  „inaktive" Tabs auswies; die Differenz deckt sich exakt. Root Cause: Chrome
   für Android verschiebt Tabs nach Inaktivität (Standard 7 Tage, einstellbar)
   automatisch in eine separate „Inaktive Tabs"-Sektion und speichert sie dort
-  nur noch als minimale Metadaten (URL+Titel) im lokalen Storage — **nicht
+  nur noch als minimale Metadaten (URL+Titel) im lokalen Storage, **nicht
   mehr als laufenden Renderer-Prozess mit CDP-Target.** Das ist strukturell,
   nicht vorübergehend: `/json/list` und auch das rohe `Target.getTargets` über
   den Browser-WebSocket (mit und ohne `setDiscoverTargets`) sehen diese Tabs
@@ -206,11 +206,11 @@ ihn zur Orientierung auf der letzten Seite an.
   **Schutzmaßnahme:** Das Tool warnt automatisch beim Scan, wenn die
   gefundene Tabzahl signifikant (>15 %) unter dem letzten bekannten Stand liegt.
   **Empfehlung zur Vermeidung:** `Chrome-Einstellungen → Erweitert → Tabs und
-  Tabgruppen → In inaktiven Bereich verschieben → Nie` setzen — verhindert,
+  Tabgruppen → In inaktiven Bereich verschieben → Nie` setzen. Das verhindert,
   dass Tabs überhaupt in diesen für CDP unsichtbaren Zustand wandern.
 - Als Konsequenz daraus: Ist ein Tab (noch) nicht sichtbar, bleibt sein
   gespeicherter Zustand (`keep`/`pc`/`archive`/`drop`) in `items.json`
-  unverändert erhalten — der Scan rät nie, sondern trägt nur `missingSince`/
+  unverändert erhalten; der Scan rät nie, sondern trägt nur `missingSince`/
   `missedScans` ein und zeigt den Tab im Bereich „Nicht mehr auffindbar" an,
   sobald er mehrfach in Folge fehlt. Kein Datenverlust, keine verlorene
   Entscheidung; bei Wiederauftauchen verschwindet der Eintrag aus diesem
@@ -218,7 +218,7 @@ ihn zur Orientierung auf der letzten Seite an.
 - Ein echter Fallback (Abgleich gegen einen Lesezeichen-Export der Tab-Liste,
   der auch inaktive Tabs erfasst) ist im Backend vorhanden
   (`lib/bookmarks.mjs`, `/api/bookmark-*`-Endpunkte), aber bewusst nicht in
-  der Oberfläche verdrahtet — der manuelle Schritt am Telefon (zusätzlich
+  der Oberfläche verdrahtet. Der manuelle Schritt am Telefon (zusätzlich
   einmal in „Inaktive Tabs" wechseln und dort erneut Lesezeichen für Tabs
   ausführen, da „Alle auswählen" die beiden Bereiche vermutlich nicht
   gemeinsam erfasst) wurde als zu umständlich für den regulären Workflow
@@ -226,14 +226,14 @@ ihn zur Orientierung auf der letzten Seite an.
 - `PUT /json/new` (HTTP-Endpoint zum Öffnen neuer Tabs) funktioniert auf dem
   Testgerät nicht („Could not create new page"). Das Tool nutzt deshalb
   ausschließlich `Target.createTarget`/`Target.closeTarget` über den
-  Browser-WebSocket — das ist getestet und funktioniert zuverlässig.
+  Browser-WebSocket, das ist getestet und funktioniert zuverlässig.
 - „Inaktive Elemente automatisch schließen" in den Chrome-Einstellungen sollte
-  ausgeschaltet sein — Chrome löscht sonst nach 6 Monaten inaktive Tabs selbständig.
+  ausgeschaltet sein, Chrome löscht sonst nach 6 Monaten inaktive Tabs selbständig.
 - **Mehrfach geöffnete identische URLs werden beim Einlesen zu einem Eintrag
   zusammengeführt** (sichtbar am „×3"-Badge in der Liste). „Auf Handy
   übertragen" öffnet einen „Handy + PC"-Tab deshalb nur, wenn er am Handy
   gerade nicht schon lebt (per frischer Tab-Liste gegen `normalizeUrl`
-  geprüft) — sonst entstünde bei jedem Übertragen ein weiteres Duplikat.
+  geprüft), sonst entstünde bei jedem Übertragen ein weiteres Duplikat.
 
 ## Dateien
 
@@ -260,7 +260,7 @@ tools/migrate-v2.mjs           Einmalige Migration vom Vor-Stufe-2-Datenmodell (
 ```
 
 Nutzerdaten liegen **nicht** neben dem Quellcode, sondern in
-`%LOCALAPPDATA%\Landed\` (überschreibbar via `LANDED_DATA_DIR`) — ein
+`%LOCALAPPDATA%\Landed\` (überschreibbar via `LANDED_DATA_DIR`), ein
 Installationsverzeichnis ist bei einer paketierten App nicht beschreibbar.
 Beim ersten Start werden vorhandene Altdaten aus einem `data/`-Ordner neben
 dem Quellcode einmalig automatisch übernommen.
@@ -281,7 +281,7 @@ settings.json                  Einrichtungsstatus (setupCompletedAt/-Version/-We
 Bis Version 0.1.0 lagen Items, Meta und Archiv als `devices/<serial>/items.json`,
 `devices/<serial>/meta.json` und `archive.jsonl` auf der Platte. Beim ersten
 Start uebernimmt `lib/items.mjs` einen solchen Bestand automatisch nach
-`landed.db` — einmalig, nur solange die Datenbank noch leer ist, und ohne die
+`landed.db`, einmalig, nur solange die Datenbank noch leer ist, und ohne die
 Altdateien anzufassen. Ein zweiter Start uebernimmt nichts erneut.
 
 Kein PID-File mehr (Einzelinstanz-Erkennung läuft über `EADDRINUSE` +
