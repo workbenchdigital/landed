@@ -1226,6 +1226,7 @@ function renderPcView(items) {
       const actions = document.createElement('div');
       actions.className = 'side-actions';
       actions.appendChild(makeNoteInput(item));
+      actions.appendChild(makeSnoozeSlot(item));
 
       const doneBtn = document.createElement('button');
       doneBtn.textContent = t('doneBtn');
