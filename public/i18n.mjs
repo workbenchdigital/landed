@@ -208,6 +208,10 @@ export const STRINGS = {
     snoozeInMonth: 'In einem Monat',
     snoozePickDate: 'Datum wählen…',
     snoozeShowNow: 'Jetzt anzeigen',
+    storeAnomalyText:
+      'Der Bestand konnte gerade nicht gelesen werden. Es ist nichts verloren, ' +
+      'die Daten liegen unveraendert auf der Platte. Landed einmal beenden und neu ' +
+      'starten. Bitte diese Zeile melden, sie hilft bei der Ursachensuche: ',
     dueToday: 'heute fällig',
     overdueSince: 'überfällig seit {date}',
     dueUntil: 'bis {date}',
@@ -468,6 +472,10 @@ export const STRINGS = {
     snoozeInMonth: 'In a month',
     snoozePickDate: 'Pick a date…',
     snoozeShowNow: 'Show now',
+    storeAnomalyText:
+      'The collection could not be read just now. Nothing is lost, your data is ' +
+      'still on disk unchanged. Quit Landed and start it again. Please report this ' +
+      'line, it helps track down the cause: ',
     dueToday: 'due today',
     overdueSince: 'overdue since {date}',
     dueUntil: 'until {date}',

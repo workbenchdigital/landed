@@ -202,6 +202,33 @@ async function loadInventory() {
   const res = await fetch('/api/items');
   inventory = await res.json();
   render();
+  showStoreAnomaly();
+}
+
+// Ein leerer Bestand und ein FEHLGESCHLAGENES Lesen sehen in der Oberflaeche
+// sonst identisch aus - dreimal hat das den Eindruck erzeugt, alle "Am PC"-
+// Links seien geloescht worden, obwohl sie unangetastet auf der Platte lagen.
+// Deshalb hier ausdruecklich sagen, dass NICHTS verloren ist, statt eine
+// harmlos wirkende leere Liste zu zeigen.
+async function showStoreAnomaly() {
+  let anomaly = null;
+  try {
+    anomaly = (await (await fetch('/api/store-status')).json()).anomaly;
+  } catch {
+    return; // Diagnose darf die Seite nie blockieren
+  }
+  const existing = document.getElementById('storeAnomaly');
+  if (existing) existing.remove();
+  if (!anomaly) return;
+
+  const box = document.createElement('div');
+  box.id = 'storeAnomaly';
+  box.className = 'store-anomaly';
+  box.textContent = t('storeAnomalyText');
+  const detail = document.createElement('code');
+  detail.textContent = anomaly;
+  box.appendChild(detail);
+  document.querySelector('main').prepend(box);
 }
 
 // Zeigt den Zeitstempel des letzten Scans auch nach einem Seiten-Reload an -

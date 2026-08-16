@@ -1401,3 +1401,23 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   .wizard-live::before { animation: none; }
   .toast { animation: none; }
 }
+
+/* Fehlgeschlagene Lesung des Bestands - muss sich deutlich von einer normalen
+   leeren Ablage abheben, sonst liest man es als "meine Daten sind weg". */
+.store-anomaly {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--drop-text);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.store-anomaly code {
+  display: block;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  word-break: break-word;
+}

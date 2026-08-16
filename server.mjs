@@ -73,6 +73,22 @@ async function readBody(req) {
   }
 }
 
+// Diagnosezeile wegschreiben, mit Ausweichort. Schlaegt das Datenverzeichnis
+// fehl (Sperre, Rechte, Verzeichnis nicht da), landet die Zeile neben der
+// .exe - sonst steht man wie am 16.08.2026 ohne jede Spur da. Nie werfen: ein
+// fehlgeschlagenes Protokoll darf den Start nicht verhindern.
+async function writeDiagLine(name, line) {
+  for (const target of [dataPath(name), path.join(path.dirname(process.execPath), name)]) {
+    try {
+      await appendFile(target, line, 'utf8');
+      return;
+    } catch {
+      // naechsten Ort versuchen
+    }
+  }
+  console.error(`Diagnosezeile konnte nirgends geschrieben werden: ${line.trim()}`);
+}
+
 async function serveStatic(pathname, res) {
   const reqPath = pathname === '/' ? '/index.html' : pathname;
   const filePath = path.join(PUBLIC_DIR, reqPath);
@@ -184,6 +200,15 @@ async function scanHandler({ deviceKey, deviceSerial }) {
 
 async function itemsHandler({ deviceKey }) {
   return items.getItems(deviceKey);
+}
+
+// Meldet, ob die letzte Lesung auffaellig war (0 Items, obwohl die Datenbank
+// noch Zeilen enthaelt - siehe readAllSafe in lib/items.mjs). Ohne das sieht
+// so ein Fehlerfall in der Oberflaeche exakt aus wie ein leerer Bestand, und
+// genau diese Verwechslung hat den Nutzer dreimal glauben lassen, seine Tabs
+// seien geloescht worden.
+async function storeStatusHandler() {
+  return { anomaly: items.getLastAnomaly() };
 }
 
 // Fuer die "zuletzt eingelesen"-Anzeige beim Laden der Seite - ohne das zeigt
@@ -521,6 +546,7 @@ async function shutdownHandler({ res }) {
 const routes = {
   'POST /api/scan': scanHandler,
   'GET /api/items': itemsHandler,
+  'GET /api/store-status': storeStatusHandler,
   'GET /api/scan-meta': scanMetaHandler,
   'GET /api/search': searchHandler,
   'GET /api/bookmark-folders': bookmarkFoldersHandler,
@@ -657,11 +683,23 @@ if (isSea() || process.argv[1] === fileURLToPath(import.meta.url)) {
       // welches dataDir wurde tatsaechlich verwendet, wie viele Items und
       // welcher letzte Scan standen beim Start bereit. Fehler beim Schreiben
       // duerfen den eigentlichen Start nie verhindern.
+      //
+      // Nachtrag 16.08.2026: genau dieser Block hat beim dritten Vorfall
+      // NICHTS geschrieben - keine Zeile, obwohl der Server lief. Damit war
+      // der einzige Anhaltspunkt weg, und die Ursache liess sich nachtraeglich
+      // nicht mehr rekonstruieren. Ein einzelnes try/catch um Lesen UND
+      // Schreiben verschluckt beides ununterscheidbar. Jetzt getrennt: der
+      // gelesene Stand wird auch dann festgehalten, wenn das Schreiben an der
+      // ueblichen Stelle scheitert (Sperre, Rechte), und ein Fehler beim Lesen
+      // wird als solcher protokolliert statt spurlos zu verschwinden.
+      let line;
       try {
         const [startupItems, meta] = await Promise.all([items.getItems(), items.getMeta()]);
-        const line = `${new Date().toISOString()} dataDir=${config.dataDir} items=${startupItems.length} lastScan=${meta.lastScan}\n`;
-        await appendFile(dataPath('startup.log'), line, 'utf8');
-      } catch { /* Diagnose-Log ist best effort */ }
+        line = `${new Date().toISOString()} dataDir=${config.dataDir} items=${startupItems.length} lastScan=${meta.lastScan}\n`;
+      } catch (e) {
+        line = `${new Date().toISOString()} dataDir=${config.dataDir} STARTFEHLER beim Lesen: ${e?.message}\n`;
+      }
+      await writeDiagLine('startup.log', line);
       // Im Dev-Modus (npm start) kein Fenster aufreissen - nur die gepackte
       // App ist "ein Doppelklick oeffnet ein App-Fenster".
       if (isSea()) await openAppWindow(`http://127.0.0.1:${PORT}`);
