@@ -224,9 +224,12 @@ async function showStoreAnomaly() {
   const box = document.createElement('div');
   box.id = 'storeAnomaly';
   box.className = 'store-anomaly';
-  box.textContent = t('storeAnomalyText');
+  // 'identity' = es liegt eine ANDERE Datenbank darunter als beim letzten
+  // Start (Neustart hilft da nicht, der Pfad muss geklaert werden).
+  // 'read' = dieselbe Datenbank, aber die Lesung kam leer zurueck.
+  box.textContent = t(anomaly.kind === 'identity' ? 'storeSwitchedText' : 'storeAnomalyText');
   const detail = document.createElement('code');
-  detail.textContent = anomaly;
+  detail.textContent = anomaly.detail;
   box.appendChild(detail);
   document.querySelector('main').prepend(box);
 }

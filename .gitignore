@@ -16,3 +16,4 @@ platform-tools-cache/
 
 # Isolierte Agent-Worktrees (Claude Code) - eigene node_modules/build-Kopien, nie Projektinhalt
 .claude/worktrees/
+last-store.json

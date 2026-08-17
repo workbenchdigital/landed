@@ -212,6 +212,11 @@ export const STRINGS = {
       'Der Bestand konnte gerade nicht gelesen werden. Es ist nichts verloren, ' +
       'die Daten liegen unveraendert auf der Platte. Landed einmal beenden und neu ' +
       'starten. Bitte diese Zeile melden, sie hilft bei der Ursachensuche: ',
+    storeSwitchedText:
+      'Achtung: Landed arbeitet gerade mit einer ANDEREN Datenbank als beim letzten ' +
+      'Start. Dein gewohnter Bestand ist nicht verloren, er liegt nur woanders. Ein ' +
+      'Neustart hilft hier nicht. Nichts einlesen und nichts entscheiden, solange das ' +
+      'so ist, sonst entstehen zwei getrennte Bestaende. Details: ',
     dueToday: 'heute fällig',
     overdueSince: 'überfällig seit {date}',
     dueUntil: 'bis {date}',
@@ -476,6 +481,11 @@ export const STRINGS = {
       'The collection could not be read just now. Nothing is lost, your data is ' +
       'still on disk unchanged. Quit Landed and start it again. Please report this ' +
       'line, it helps track down the cause: ',
+    storeSwitchedText:
+      'Warning: Landed is working with a DIFFERENT database than it did on the last ' +
+      'start. Your usual collection is not lost, it just lives somewhere else. ' +
+      'Restarting will not help here. Do not scan and do not decide anything while ' +
+      'this is the case, or you will end up with two separate collections. Details: ',
     dueToday: 'due today',
     overdueSince: 'overdue since {date}',
     dueUntil: 'until {date}',

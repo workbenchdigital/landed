@@ -694,8 +694,14 @@ if (isSea() || process.argv[1] === fileURLToPath(import.meta.url)) {
       // wird als solcher protokolliert statt spurlos zu verschwinden.
       let line;
       try {
+        // Zuerst pruefen, ob ueberhaupt noch dieselbe Datenbank darunter
+        // liegt wie beim letzten Start - danach erst lesen und merken.
+        const switched = items.checkStoreIdentity();
         const [startupItems, meta] = await Promise.all([items.getItems(), items.getMeta()]);
-        line = `${new Date().toISOString()} dataDir=${config.dataDir} items=${startupItems.length} lastScan=${meta.lastScan}\n`;
+        items.rememberStore(startupItems.length);
+        line =
+          `${new Date().toISOString()} dataDir=${config.dataDir} items=${startupItems.length} ` +
+          `lastScan=${meta.lastScan}${switched ? ` DATENBANKWECHSEL: ${switched}` : ''}\n`;
       } catch (e) {
         line = `${new Date().toISOString()} dataDir=${config.dataDir} STARTFEHLER beim Lesen: ${e?.message}\n`;
       }
