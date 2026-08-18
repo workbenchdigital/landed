@@ -524,15 +524,48 @@ function exportItems(items, format) {
   toast(items.length === 1 ? t('exportedOne') : t('exportedMany', { n: items.length }));
 }
 
+// Jeder Link verlaesst die App ueber den Server, nie ueber window.open oder
+// einen normalen Klick im App-Fenster. Grund: das Fenster laeuft seit 0.3.6 in
+// einem eigenen Browserprofil (noetig fuer das Taskleisten-Icon, siehe
+// lib/launcher.mjs). Ein Klick darin wuerde die Seite in genau diesem Profil
+// oeffnen - ohne die Anmeldungen des Nutzers, ueberall Login-Seiten. Der
+// Server startet stattdessen den Alltagsbrowser.
+async function openExternal(urls) {
+  if (!urls.length) return;
+  try {
+    const res = await fetch('/api/open-external', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+  } catch (e) {
+    toast(t('openExternalFailedPrefix') + friendlyFetchError(e), { error: true });
+  }
+}
+
 // Gegenstueck zu "Auf Handy uebertragen" (oeffnet Links AM HANDY): oeffnet
 // dieselben URLs stattdessen hier im PC-Browser - fuer die PC-Arbeitsliste,
-// wo per Definition kein Handy-Tab mehr existiert. window.open pro Link
-// (kein window.open-Array-API) - Popup-Blocker koennten bei sehr vielen
-// Links auf einmal eingreifen; fuer die ueblichen wenigen "Am PC"-Eintraege
-// unkritisch.
+// wo per Definition kein Handy-Tab mehr existiert.
 function openAllInBrowser(items) {
-  for (const item of items) window.open(item.url, '_blank', 'noopener');
+  openExternal(items.map((item) => item.url));
 }
+
+// Klicks auf Titel-Links abfangen, statt an jeder Stelle einzeln umzubauen -
+// es gibt mehrere Renderer, die Links erzeugen, und ein vergessener waere
+// genau der eine, der wieder im falschen Profil landet. Auch mit Modifier
+// abfangen: "im Hintergrund oeffnen" wuerde sonst ebenfalls im App-Profil
+// landen. Mittelklick loest kein click-Ereignis aus, daher zusaetzlich
+// auxclick.
+function routeLinkClicksToBrowser(event) {
+  const link = event.target.closest?.('a[target="_blank"]');
+  if (!link || !link.href) return;
+  if (event.type === 'auxclick' && event.button !== 1) return;
+  event.preventDefault();
+  openExternal([link.href]);
+}
+document.addEventListener('click', routeLinkClicksToBrowser);
+document.addEventListener('auxclick', routeLinkClicksToBrowser);
 
 // Erscheint nur, wenn etwas ausgewaehlt ist - Sammelaktionen fuer die
 // Mehrfachauswahl (siehe .row-select/.group-select in render()).

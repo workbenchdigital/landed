@@ -212,6 +212,7 @@ export const STRINGS = {
       'Der Bestand konnte gerade nicht gelesen werden. Es ist nichts verloren, ' +
       'die Daten liegen unveraendert auf der Platte. Landed einmal beenden und neu ' +
       'starten. Bitte diese Zeile melden, sie hilft bei der Ursachensuche: ',
+    openExternalFailedPrefix: 'Link konnte nicht geöffnet werden: ',
     storeSwitchedText:
       'Achtung: Landed arbeitet gerade mit einer ANDEREN Datenbank als beim letzten ' +
       'Start. Dein gewohnter Bestand ist nicht verloren, er liegt nur woanders. Ein ' +
@@ -481,6 +482,7 @@ export const STRINGS = {
       'The collection could not be read just now. Nothing is lost, your data is ' +
       'still on disk unchanged. Quit Landed and start it again. Please report this ' +
       'line, it helps track down the cause: ',
+    openExternalFailedPrefix: 'Could not open the link: ',
     storeSwitchedText:
       'Warning: Landed is working with a DIFFERENT database than it did on the last ' +
       'start. Your usual collection is not lost, it just lives somewhere else. ' +

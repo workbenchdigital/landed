@@ -455,3 +455,51 @@ test('POST /api/snooze setzt snoozeUntil, leerer Wert setzt wieder zurueck', asy
     assert.equal(items.find((i) => i.normalizedUrl === 'https://a.example/').snoozeUntil, null);
   });
 });
+
+// POST /api/open-external startet fuer jede URL einen Prozess und bekommt die
+// URLs aus eingelesenen Tabs, also aus Fremddaten. Die Pruefung davor ist
+// damit sicherheitsrelevant und nicht bloss Bequemlichkeit: ohne sie liesse
+// sich ueber einen praeparierten Tab-Eintrag ein beliebiger Protokoll-Handler
+// starten. Diese Tests decken genau die Ablehnungen ab - der Erfolgsfall
+// wuerde einen echten Browser oeffnen und gehoert deshalb nicht hierher.
+test('POST /api/open-external lehnt nicht-http(s)-Schemata ab', async () => {
+  await withServer(async (base) => {
+    const blocked = ['file:///C:/Windows/System32/calc.exe', 'javascript:alert(1)', 'ms-msdt:/id', 'data:text/html,x'];
+    for (const url of blocked) {
+      const res = await fetch(`${base}/api/open-external`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      assert.equal(res.status, 400, `${url} haette abgelehnt werden muessen`);
+      assert.match((await res.json()).error, /http/i);
+    }
+  });
+});
+
+test('POST /api/open-external lehnt fehlende und unparsbare URLs ab', async () => {
+  await withServer(async (base) => {
+    const post = (body) =>
+      fetch(`${base}/api/open-external`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    assert.equal((await post({})).status, 400, 'ohne URL muss 400 kommen');
+    assert.equal((await post({ urls: [] })).status, 400, 'leere Liste muss 400 kommen');
+    assert.equal((await post({ url: 'kein-url' })).status, 400, 'unparsbare URL muss 400 kommen');
+  });
+});
+
+test('POST /api/open-external deckelt die Anzahl der Links', async () => {
+  await withServer(async (base) => {
+    const urls = Array.from({ length: 51 }, (_, i) => `https://example.com/${i}`);
+    const res = await fetch(`${base}/api/open-external`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls }),
+    });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /50/);
+  });
+});

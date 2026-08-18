@@ -10,7 +10,7 @@ import * as items from './lib/items.mjs';
 import * as bookmarks from './lib/bookmarks.mjs';
 import { checkHealth } from './lib/health.mjs';
 import { getSettings, completeSetup, updateSettings } from './lib/settings.mjs';
-import { openAppWindow, createDesktopShortcut } from './lib/launcher.mjs';
+import { openAppWindow, createDesktopShortcut, openInDefaultBrowser } from './lib/launcher.mjs';
 import { friendlyError, HttpError, badRequest } from './lib/errors.mjs';
 import { config, dataPath, migrateLegacyDataDir } from './lib/config.mjs';
 import { BY_ID as DECISION_BY_ID } from './public/shared/decisions.mjs';
@@ -209,6 +209,40 @@ async function itemsHandler({ deviceKey }) {
 // seien geloescht worden.
 async function storeStatusHandler() {
   return { anomaly: items.getLastAnomaly() };
+}
+
+// Das App-Fenster laeuft in einem eigenen Browserprofil (siehe
+// lib/launcher.mjs) - ein Klick auf einen Link wuerde dort in einer Chrome-
+// Instanz ohne die Anmeldungen des Nutzers landen. Die Oberflaeche schickt
+// Links deshalb hierher, und der Server oeffnet sie im Alltagsbrowser.
+//
+// Die URLs stammen aus eingelesenen Tabs, sind also Fremddaten: strikt auf
+// http/https begrenzt, damit ein praeparierter Eintrag nicht ueber file:,
+// javascript: oder einen registrierten Protokoll-Handler etwas anderes
+// startet als eine Webseite. Die Anzahl ist gedeckelt, weil jeder Eintrag
+// einen Prozess startet.
+const MAX_OPEN_URLS = 50;
+
+async function openExternalHandler({ body }) {
+  const raw = Array.isArray(body.urls) ? body.urls : body.url ? [body.url] : [];
+  if (!raw.length) throw badRequest('Keine URL angegeben.');
+  if (raw.length > MAX_OPEN_URLS) throw badRequest(`Zu viele Links auf einmal (höchstens ${MAX_OPEN_URLS}).`);
+
+  const safe = raw.map((candidate) => {
+    let parsed;
+    try {
+      parsed = new URL(String(candidate));
+    } catch {
+      throw badRequest(`Keine gültige URL: ${candidate}`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw badRequest(`Nur http/https wird geöffnet, nicht ${parsed.protocol}`);
+    }
+    return parsed.href;
+  });
+
+  for (const url of safe) await openInDefaultBrowser(url);
+  return { opened: safe.length };
 }
 
 // Fuer die "zuletzt eingelesen"-Anzeige beim Laden der Seite - ohne das zeigt
@@ -547,6 +581,7 @@ const routes = {
   'POST /api/scan': scanHandler,
   'GET /api/items': itemsHandler,
   'GET /api/store-status': storeStatusHandler,
+  'POST /api/open-external': openExternalHandler,
   'GET /api/scan-meta': scanMetaHandler,
   'GET /api/search': searchHandler,
   'GET /api/bookmark-folders': bookmarkFoldersHandler,
