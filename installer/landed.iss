@@ -23,10 +23,22 @@
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
 #endif
-; workbench.Landed statt workbench.landed.Landed o.ae. - kurze, stabile
-; AppUserModelID, die Windows fuer Taskleisten-/Start-Pins und
-; Benachrichtigungsgruppierung als Identitaet nutzt.
-#define MyAppUserModelID "workbench.Landed"
+; Diese AppUserModelID ist NICHT frei gewaehlt, sie muss exakt der ID
+; entsprechen, die Chrome dem App-Fenster gibt - sonst findet Windows keine
+; Verknuepfung dazu und zeigt in der Taskleiste das Chrome-Icon statt des
+; Landed-Icons (genau der Fehler, den ein frueheres "workbench.Landed" hier
+; nicht beheben konnte, weil es zu nichts passte).
+;
+; Chrome bildet sie als "<BaseAppId>.<host>_<pfad>.<Profilordner>.<Profil>".
+; Am laufenden Fenster gemessen (18.08.2026): mit dem festen Browserprofil
+; aus lib/launcher.mjs ergibt sich "Chrome.127.0.0.1_/.LandedApp.Default".
+; Weder Benutzername noch Port gehen ein, die ID ist also auf jedem Rechner
+; gleich. Bei Aenderung des Profilordnernamens dort MUSS sie hier mitwandern.
+;
+; Bekannte Grenze: faellt lib/launcher.mjs mangels Chrome auf Edge zurueck,
+; lautet der erste Teil anders und die Zuordnung greift nicht - dann bleibt es
+; beim Browser-Icon. Kein Fehlverhalten, nur unschoen.
+#define MyAppUserModelID "Chrome.127.0.0.1_/.LandedApp.Default"
 
 [Setup]
 ; Direkt als Literal statt ueber #define - Inno Setups eigene Escape-Regel
