@@ -154,6 +154,7 @@
       <div class="seg" id="sortModeSwitch" role="group" aria-label="Domain-Sortierung">
         <button data-sort-value="count" data-i18n="sortCountLabel" data-i18n-title="sortCountTitle" title="Domains mit den meisten Tabs zuerst">Größte zuerst</button>
         <button data-sort-value="alpha" data-i18n="sortAlphaLabel" data-i18n-title="sortAlphaTitle" title="Domains alphabetisch sortieren">A–Z</button>
+        <button data-sort-value="age" data-i18n="sortAgeLabel" data-i18n-title="sortAgeTitle" title="Älteste Entscheidung zuerst, auch innerhalb einer Domain-Gruppe">Ältestes zuerst</button>
       </div>
       <button id="filterToggleBtn" class="ghost-btn" aria-expanded="false" aria-controls="filterSidebar" data-i18n="filterToggleBtn" data-i18n-title="filterToggleBtnTitle" title="Nach Zustand oder Quelle filtern">Filter</button>
     </div>
@@ -172,8 +173,11 @@
 </div>
 
 <main id="app-main">
+  <!-- Gemeinsam fuer Sichten UND "Am PC" statt in view-triage verschachtelt -
+       renderSelectionBar() zeigt je nach Ablage andere Aktionen, aber es ist
+       dieselbe Leiste (siehe app.js renderSelectionBar/setView). -->
+  <div class="selection-bar" id="selectionBar" hidden></div>
   <section class="view" id="view-triage">
-    <div class="selection-bar" id="selectionBar" hidden></div>
     <div id="app"></div>
     <p class="hint" id="keyboardHint"></p>
   </section>

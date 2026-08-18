@@ -267,6 +267,17 @@ async function scan() {
   }
 }
 
+// "Aeltestes zuerst" sortiert NICHT nur, welche Domain-Gruppe zuerst kommt -
+// bei der real gemessenen Verteilung (github.com allein 67 von 283 "Am PC"-
+// Eintraegen) waere das wertlos, wenn die 67 Zeilen innerhalb der Gruppe
+// weiterhin in Scan-Reihenfolge liegen. stateChangedAt statt firstSeen: es
+// geht um "wie lange liegt die Entscheidung schon", nicht um das Alter des
+// Tabs selbst (firstSeen ist bei allem vor der SQLite-Migration ohnehin auf
+// einen einzigen Zeitpunkt eingefroren, siehe lib/items.mjs).
+function byAgeAscending(a, b) {
+  return new Date(a.stateChangedAt) - new Date(b.stateChangedAt);
+}
+
 function groupByDomain(items) {
   const groups = new Map();
   for (const item of items) {
@@ -274,6 +285,10 @@ function groupByDomain(items) {
     groups.get(item.domain).push(item);
   }
   const entries = [...groups.entries()];
+  if (domainSortMode === 'age') {
+    for (const [, group] of entries) group.sort(byAgeAscending);
+    return entries.sort((a, b) => byAgeAscending(a[1][0], b[1][0]));
+  }
   return domainSortMode === 'alpha'
     ? entries.sort((a, b) => a[0].localeCompare(b[0]))
     : entries.sort((a, b) => b[1].length - a[1].length);
@@ -322,12 +337,35 @@ function isSafeFaviconDomain(domain) {
   return true;
 }
 
-function renderDomainGroup(container, domain, items) {
+// selectable: bewusst dieselbe Checkbox+selectedKeys-Mechanik wie in der
+// eigenstaendigen Sichten-Gruppierung (render() weiter unten), NICHT
+// dupliziert, sondern hier optional zugeschaltet - vermeidet eine zweite
+// Auswahl-Implementierung fuer denselben Zweck. Nur "Am PC" nutzt das
+// bisher; missing/archive rufen weiterhin ohne Optionen auf, unveraendert.
+function renderDomainGroup(container, domain, items, { selectable = false } = {}) {
   const group = document.createElement('div');
   group.className = 'domain-group' + (collapsedDomains.has(domain) ? ' collapsed' : '');
 
   const header = document.createElement('div');
   header.className = 'domain-header';
+
+  if (selectable) {
+    const groupKeys = items.map((i) => i.normalizedUrl);
+    const selectedInGroup = groupKeys.filter((k) => selectedKeys.has(k)).length;
+    const groupCb = document.createElement('input');
+    groupCb.type = 'checkbox';
+    groupCb.className = 'group-select';
+    groupCb.title = t('selectGroupTitle');
+    groupCb.checked = selectedInGroup > 0 && selectedInGroup === groupKeys.length;
+    groupCb.indeterminate = selectedInGroup > 0 && selectedInGroup < groupKeys.length;
+    groupCb.addEventListener('click', (e) => e.stopPropagation());
+    groupCb.addEventListener('change', () => {
+      for (const k of groupKeys) (groupCb.checked ? selectedKeys.add(k) : selectedKeys.delete(k));
+      render();
+    });
+    header.appendChild(groupCb);
+  }
+
   const chevron = document.createElement('span');
   chevron.className = 'chevron';
   chevron.textContent = '▾';
@@ -567,8 +605,213 @@ function routeLinkClicksToBrowser(event) {
 document.addEventListener('click', routeLinkClicksToBrowser);
 document.addEventListener('auxclick', routeLinkClicksToBrowser);
 
+// Sammel-"Erledigt" fuer die Auswahl in "Am PC" - derselbe Serveraufruf wie
+// der Einzelknopf (pcDone), aber EIN loadInventory() am Ende statt eines pro
+// Item. Bei 67 Eintraegen in einer einzigen Domain-Gruppe (real gemessen,
+// github.com) waere ein Reload pro Klick unnoetig langsam gewesen.
+//
+// Codemouse-Fund auf PR #53, bestaetigt: Promise.all bricht beim ERSTEN
+// Fehlschlag sofort ab (der laesst try/finally sofort weiterlaufen), aber
+// die uebrigen, noch laufenden fetch()-Aufrufe werden dadurch nicht
+// abgebrochen - sie laufen im Hintergrund weiter. loadInventory() im
+// finally-Block konnte dadurch vor deren Abschluss greifen und einen
+// unvollstaendigen Zwischenstand laden. Promise.allSettled wartet auf ALLE
+// Aufrufe, bevor irgendetwas weitergeht - kein Wettlauf mehr moeglich.
+async function bulkPcDone(items) {
+  if (!items.length) return;
+  try {
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        await flushNoteSave(item.normalizedUrl);
+        const res = await fetch('/api/pc/done', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ normalizedUrl: item.normalizedUrl }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+      })
+    );
+    // Nicht nur zaehlen, sondern den ERSTEN echten Fehlschlag weiterreichen -
+    // Codemouse-Fund auf PR #54, bestaetigt: eine synthetische generische
+    // Fehlermeldung hier haette die konkrete Serverantwort verschluckt (z.B.
+    // "Item nicht in der PC-Arbeitsliste gefunden."), die vorher (mit
+    // Promise.all) im catch-Block ankam.
+    const firstRejected = results.find((r) => r.status === 'rejected');
+    if (firstRejected) throw firstRejected.reason instanceof Error ? firstRejected.reason : new Error(t('genericFailed'));
+    selectedKeys.clear();
+    toast(t('bulkDoneToast', { n: items.length }));
+  } catch (e) {
+    toast(t('errorPrefix') + friendlyFetchError(e), { error: true });
+  } finally {
+    // Nachladen statt lokal zu raten: bei Promise.allSettled koennen
+    // einzelne Aufrufe fehlgeschlagen sein, waehrend andere durchgingen -
+    // der Serverstand ist die einzige verlaessliche Quelle fuer "was
+    // wirklich passiert ist". Laeuft jetzt garantiert erst NACH allen
+    // Aufrufen, nicht mehr nach dem ersten Fehlschlag.
+    await loadInventory();
+  }
+}
+
+// Sammel-Wiedervorlage: gleiche Semantik wie setSnooze() fuer ein Einzelitem,
+// aber ohne dessen Render-pro-Aufruf. "Am PC"-Items sind bereits state 'pc' -
+// anders als bei setSnooze() fuer Sichten-Items gibt es hier keinen
+// 'open'->'pc'-Uebergang zu beachten.
+//
+// Gleicher Codemouse-Fund wie bei bulkPcDone (PR #53) - Promise.allSettled
+// statt Promise.all, aus demselben Grund: sonst kann loadInventory() vor
+// dem Abschluss noch laufender Aufrufe greifen.
+async function bulkSetSnooze(items, value) {
+  if (!items.length) return;
+  try {
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        const res = await fetch('/api/snooze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ normalizedUrl: item.normalizedUrl, snoozeUntil: value }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+      })
+    );
+    // Nicht nur zaehlen, sondern den ERSTEN echten Fehlschlag weiterreichen -
+    // Codemouse-Fund auf PR #54, bestaetigt: eine synthetische generische
+    // Fehlermeldung hier haette die konkrete Serverantwort verschluckt (z.B.
+    // "Item nicht in der PC-Arbeitsliste gefunden."), die vorher (mit
+    // Promise.all) im catch-Block ankam.
+    const firstRejected = results.find((r) => r.status === 'rejected');
+    if (firstRejected) throw firstRejected.reason instanceof Error ? firstRejected.reason : new Error(t('genericFailed'));
+    selectedKeys.clear();
+    toast(t('bulkSnoozeToast', { n: items.length }));
+  } catch (e) {
+    toast(t('snoozeSaveFailedPrefix') + friendlyFetchError(e), { error: true });
+  } finally {
+    await loadInventory();
+  }
+}
+
+// Sammel-"Zurueck aufs Handy": ANDERS als die beiden obigen Aktionen bewusst
+// NICHT parallelisiert - das hier ist echte Geraete-I/O (ein Tab pro URL
+// live am Handy oeffnen), keine reine Datenbank-Mutation. adb.mjs haelt
+// ohnehin nur eine ADB-Session gleichzeitig; parallele Einzelaufrufe wuerden
+// sich gegenseitig um dieselbe Session streiten. Der Server buendelt die
+// ganze Auswahl in EINE Session (cdp.openMany), gleiches Muster wie
+// restoreHandler fuer "Auf Handy uebertragen".
+async function bulkPcReturn(items) {
+  if (!items.length) return;
+  if (!confirm(t('bulkReturnConfirm', { n: items.length }))) return;
+  setProgress(true, { label: t('openingTabsLabel'), done: 0, total: 0 });
+  try {
+    const result = await runStep('/api/pc/bulk-return', t('openingTabsLabel'), {
+      normalizedUrls: items.map((i) => i.normalizedUrl),
+    });
+    setProgress(false);
+    const opened = result.total - result.failed;
+    toast(
+      t('bulkReturnedToast', { n: opened }) + (result.failed ? t('failedSuffixText', { n: result.failed }) : ''),
+      { error: result.failed > 0 && opened === 0 }
+    );
+    selectedKeys.clear();
+  } catch (e) {
+    setProgress(false);
+    toast(t('errorPrefix') + friendlyFetchError(e), {
+      error: true,
+      actionLabel: t('checkSetupAction'),
+      onAction: checkAndOpenWizard,
+    });
+  } finally {
+    await loadInventory();
+  }
+}
+
+// Eigenes, schlankeres Menue statt openSnoozeMenu() wiederzuverwenden: das
+// dortige "revert zu Knopf"-Verhalten gilt fuer EIN Item mit dauerhaftem
+// Slot in der Zeile - hier baut renderSelectionBar() bei jedem Klick ohnehin
+// alles neu, ein Revert-Pfad haette keinen Nutzen. Gleiche Schnellwahl-
+// Optionen (snoozeQuickOptions), gleiches Aussen-Klick/Escape-Aufraeumen.
+function openBulkSnoozeMenu(slot, items) {
+  const menu = document.createElement('div');
+  menu.className = 'snooze-menu';
+
+  const cleanup = () => {
+    document.removeEventListener('click', onOutside, true);
+    document.removeEventListener('keydown', onEscape, true);
+  };
+  const revert = () => { cleanup(); render(); };
+  const onOutside = (e) => { if (!menu.contains(e.target)) revert(); };
+  const onEscape = (e) => { if (e.key === 'Escape') revert(); };
+
+  const addOption = (label, onPick, className) => {
+    const opt = document.createElement('button');
+    opt.type = 'button';
+    if (className) opt.className = className;
+    opt.textContent = label;
+    opt.addEventListener('click', (e) => { e.stopPropagation(); cleanup(); onPick(); });
+    menu.appendChild(opt);
+  };
+
+  for (const { label, value } of snoozeQuickOptions(localYmd())) {
+    addOption(label, () => bulkSetSnooze(items, value));
+  }
+  addOption(t('snoozePickDate'), () => {
+    cleanup();
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.className = 'snooze-input';
+    input.title = t('snoozeDateInputTitle');
+    input.addEventListener('click', (e) => e.stopPropagation());
+    input.addEventListener('change', (e) => { e.stopPropagation(); bulkSetSnooze(items, input.value); });
+    slot.replaceChildren(input);
+    input.focus();
+  });
+
+  document.addEventListener('click', onOutside, true);
+  document.addEventListener('keydown', onEscape, true);
+  slot.replaceChildren(menu);
+}
+
+// Knopfleiste fuer die Mehrfachauswahl in "Am PC" - Gegenstueck zu den vier
+// DECISIONS-Knoepfen in Sichten, aber mit den Aktionen, die dort etwas
+// bewirken: die Entscheidung ist bereits gefallen, "Erledigt"/"Zurueck aufs
+// Handy"/"Wiedervorlage" sind die verbleibenden Schritte (siehe renderPcView
+// fuer die Einzelitem-Entsprechung).
+function makePcSelectionActions(items) {
+  const wrap = document.createElement('div');
+  wrap.className = 'decision-buttons';
+
+  const doneBtn = document.createElement('button');
+  doneBtn.textContent = t('doneBtn');
+  doneBtn.title = t('bulkDoneTitle', { n: items.length });
+  doneBtn.addEventListener('click', () => bulkPcDone(items));
+  wrap.appendChild(doneBtn);
+
+  const returnBtn = document.createElement('button');
+  returnBtn.textContent = t('returnToPhoneBtn');
+  returnBtn.title = t('bulkReturnTitle', { n: items.length });
+  returnBtn.addEventListener('click', () => bulkPcReturn(items));
+  wrap.appendChild(returnBtn);
+
+  const snoozeSlot = document.createElement('div');
+  snoozeSlot.className = 'snooze-slot';
+  const snoozeBtn = document.createElement('button');
+  snoozeBtn.type = 'button';
+  snoozeBtn.className = 'snooze-btn';
+  snoozeBtn.textContent = '⏲';
+  snoozeBtn.title = t('bulkSnoozeTitle', { n: items.length });
+  snoozeBtn.addEventListener('click', (e) => { e.stopPropagation(); openBulkSnoozeMenu(snoozeSlot, items); });
+  snoozeSlot.appendChild(snoozeBtn);
+  wrap.appendChild(snoozeSlot);
+
+  return wrap;
+}
+
 // Erscheint nur, wenn etwas ausgewaehlt ist - Sammelaktionen fuer die
-// Mehrfachauswahl (siehe .row-select/.group-select in render()).
+// Mehrfachauswahl (siehe .row-select/.group-select in render()). Auswahl ist
+// zustaendig-uebergreifend gedacht, aber die sinnvollen AKTIONEN sind es
+// nicht: in Sichten ist "entscheiden" die Aktion, in "Am PC" ist bereits
+// entschieden - dort sind "Erledigt"/"Zurueck aufs Handy"/"Wiedervorlage" die
+// Aktionen, die etwas bewirken. setView() leert die Auswahl bei jedem
+// Ablagenwechsel, eine gemischte Auswahl ueber beide Ablagen hinweg kann
+// also nicht entstehen.
 function renderSelectionBar() {
   const bar = document.getElementById('selectionBar');
   if (!bar) return;
@@ -578,8 +821,8 @@ function renderSelectionBar() {
     if (!inventory.some((i) => i.normalizedUrl === key)) selectedKeys.delete(key);
   }
   bar.innerHTML = '';
-  bar.hidden = selectedKeys.size === 0;
-  if (!selectedKeys.size) return;
+  bar.hidden = selectedKeys.size === 0 || (activeView !== 'triage' && activeView !== 'pc');
+  if (bar.hidden) return;
 
   const selectedItems = inventory.filter((i) => selectedKeys.has(i.normalizedUrl));
 
@@ -588,18 +831,22 @@ function renderSelectionBar() {
   count.textContent = t('selectedCount', { n: selectedItems.length });
   bar.appendChild(count);
 
-  const decisions = document.createElement('div');
-  decisions.className = 'decision-buttons';
-  for (const d of DECISIONS) {
-    const btn = document.createElement('button');
-    btn.innerHTML = d.icon;
-    btn.title = `${d.key.toUpperCase()} — ${decisionLabel(d.id)} — ${decisionOutcome(d.id)}`;
-    btn.setAttribute('aria-label', decisionLabel(d.id));
-    btn.className = d.id;
-    btn.addEventListener('click', () => decideSelection(d.id));
-    decisions.appendChild(btn);
+  if (activeView === 'pc') {
+    bar.appendChild(makePcSelectionActions(selectedItems));
+  } else {
+    const decisions = document.createElement('div');
+    decisions.className = 'decision-buttons';
+    for (const d of DECISIONS) {
+      const btn = document.createElement('button');
+      btn.innerHTML = d.icon;
+      btn.title = `${d.key.toUpperCase()} — ${decisionLabel(d.id)} — ${decisionOutcome(d.id)}`;
+      btn.setAttribute('aria-label', decisionLabel(d.id));
+      btn.className = d.id;
+      btn.addEventListener('click', () => decideSelection(d.id));
+      decisions.appendChild(btn);
+    }
+    bar.appendChild(decisions);
   }
-  bar.appendChild(decisions);
 
   const copyBtn = document.createElement('button');
   copyBtn.textContent = t('copyBtn');
@@ -759,6 +1006,25 @@ function isSnoozed(item) {
 function formatYmdDe(ymd) {
   const [y, m, d] = ymd.split('-');
   return `${d}.${m}.${y}`;
+}
+
+// Grobe Tagesdifferenz gegen lokale Mitternacht, nicht gegen 24h-Vielfache -
+// sonst waere "seit gestern" bei einer um 23:50 getroffenen Entscheidung
+// schon nach 10 Minuten falsch. Gerundet auf ganze Tage, weil es hier um
+// Liegenlassen geht, nicht um Uhrzeiten.
+function daysSince(iso) {
+  const then = new Date(iso);
+  const startOfThen = new Date(then.getFullYear(), then.getMonth(), then.getDate());
+  const startOfNow = new Date();
+  startOfNow.setHours(0, 0, 0, 0);
+  return Math.round((startOfNow - startOfThen) / 864e5);
+}
+
+function formatAgeHint(iso) {
+  const days = daysSince(iso);
+  if (days <= 0) return t('ageToday');
+  if (days === 1) return t('ageYesterday');
+  return t('ageDays', { n: days });
 }
 
 const filterSidebarEl = document.getElementById('filterSidebar');
@@ -1274,17 +1540,42 @@ function renderPcView(items) {
   pcSectionEl.appendChild(openAllBtn);
 
   for (const [domain, group] of groupByDomain(shown)) {
-    const list = renderDomainGroup(pcSectionEl, domain, group);
+    const list = renderDomainGroup(pcSectionEl, domain, group, { selectable: true });
     for (const item of group) {
       const row = document.createElement('div');
       row.className = 'tab-row';
       row.tabIndex = 0;
       row.dataset.key = item.normalizedUrl;
 
+      // Gleiche Checkbox+selectedKeys-Mechanik wie in Sichten (siehe render()
+      // weiter unten) - 283 von 295 Items im echten Bestand liegen hier,
+      // ohne Mehrfachauswahl war jede Aufraeumaktion ein Einzelklick pro Tab.
+      const selectCb = document.createElement('input');
+      selectCb.type = 'checkbox';
+      selectCb.className = 'row-select';
+      selectCb.checked = selectedKeys.has(item.normalizedUrl);
+      selectCb.addEventListener('click', (e) => e.stopPropagation());
+      selectCb.addEventListener('change', () => {
+        if (selectCb.checked) selectedKeys.add(item.normalizedUrl);
+        else selectedKeys.delete(item.normalizedUrl);
+        render();
+      });
+      row.appendChild(selectCb);
+
       const swatch = document.createElement('span');
       swatch.className = 'swatch pc';
       row.appendChild(swatch);
       row.appendChild(renderTitleBlock(item));
+
+      // Ohne das sieht eine Zeile von gestern genauso aus wie eine von vor
+      // zwei Wochen - bei median 7 Tagen Liegezeit im echten Bestand war das
+      // der Kern des Problems, nicht nur ein fehlendes Detail. Schwelle 5
+      // Tage matcht das bestehende .urgent-Muster aus Verschwunden/Wieder-
+      // vorlage, keine neue Zahl erfunden.
+      const age = document.createElement('span');
+      age.className = 'missing-hint' + (daysSince(item.stateChangedAt) > 5 ? ' urgent' : '');
+      age.textContent = formatAgeHint(item.stateChangedAt);
+      row.appendChild(age);
 
       const actions = document.createElement('div');
       actions.className = 'side-actions';
@@ -1678,6 +1969,12 @@ function setView(id) {
   // unsichtbare Zustandsaenderung, ausgeloest aus einer Ablage ohne
   // Entscheidungsknoepfe.
   focusedKey = null;
+  // Gleicher Grund wie beim focusedKey-Reset direkt darueber: die
+  // Auswahlleiste zeigt je Ablage unterschiedliche Aktionen (siehe
+  // renderSelectionBar). Eine Auswahl, die einen Ablagenwechsel ueberlebt,
+  // koennte sonst Items aus Sichten UND "Am PC" gleichzeitig enthalten -
+  // fuer welche Aktionsleiste waere dann unklar, was "richtig" ist.
+  selectedKeys.clear();
   for (const view of VIEWS) {
     document.getElementById(`view-${view.id}`).hidden = view.id !== id;
   }
@@ -1893,7 +2190,7 @@ document.addEventListener('keydown', (e) => {
     const slot = document.querySelector(`.tab-row[data-key="${CSS.escape(focusedKey)}"] .snooze-slot`);
     if (slot) {
       e.preventDefault();
-      openSnoozeEditor(slot, inventory.find((i) => i.normalizedUrl === focusedKey));
+      openSnoozeMenu(slot, inventory.find((i) => i.normalizedUrl === focusedKey));
     }
     return;
   }
@@ -1926,9 +2223,13 @@ async function streamNdjson(res, onEvent) {
 
 // Ein Schritt einer Uebertragen-Operation (schliessen ODER oeffnen). Wirft
 // bei einer Fehlerantwort, sonst { total, failed, archivedCount } aus dem
-// abschliessenden "done"-Event.
-async function runStep(url, label) {
-  const res = await fetch(url, { method: 'POST' });
+// abschliessenden "done"-Event. body optional (bulkPcReturn braucht die
+// ausgewaehlten normalizedUrls, runTransfer weiterhin keinen Body).
+async function runStep(url, label, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+  });
   if (!res.ok) {
     // Fehlerantworten (z.B. CSRF-Ablehnung, 500) sind einzelnes JSON ohne
     // abschliessendes Newline, kein NDJSON-Stream - sonst wuerde die letzte

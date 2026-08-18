@@ -358,6 +358,49 @@ async function pcReturnHandler({ body, deviceKey, deviceSerial }) {
   }, deviceSerial);
 }
 
+// Sammel-Fassung von pcReturnHandler fuer die Mehrfachauswahl in "Am PC":
+// EINE ADB-Session fuer die ganze Auswahl statt einer pro Item - adb.mjs
+// haelt ohnehin nur eine Session gleichzeitig, N Einzelaufrufe wuerden sich
+// nur nacheinander abarbeiten lassen, aber mit N mal Session-Auf-/Abbau statt
+// einmal. Gleiches Muster wie restoreHandler: results-Array im selben Format
+// wie cdp.openMany liefert, damit runStep() im Frontend unveraendert bleibt.
+//
+// Items, die nicht (mehr) in der PC-Arbeitsliste stehen, werden gefiltert
+// statt die ganze Anfrage abzulehnen - anders als beim Einzelitem (das dort
+// sofort ein 400 verdient) waere ein einzelner Ausreisser in einer 60er-
+// Auswahl kein Grund, gar nichts zu tun.
+// Hoeher als MAX_OPEN_URLS (50) oben: cdp.openMany drosselt ohnehin selbst
+// (config.tabDelayMs zwischen jedem Tab), eine Rafter-Reviewfrage war deshalb
+// nicht Missbrauchsschutz, sondern eine schlicht fehlende Grenze. 50 waere
+// hier aber zu niedrig gewesen - die groesste Domain-Gruppe im echten Bestand
+// (github.com) hat 67 Eintraege, und genau "eine ganze Gruppe zurueckholen"
+// ist der Anwendungsfall, fuer den dieser Endpunkt gebaut wurde.
+const MAX_BULK_RETURN = 200;
+
+async function pcBulkReturnHandler({ body, res, deviceKey, deviceSerial }) {
+  const urls = Array.isArray(body.normalizedUrls) ? body.normalizedUrls : [];
+  if (!urls.length) throw badRequest('Keine URLs angegeben.');
+  if (urls.length > MAX_BULK_RETURN) throw badRequest(`Zu viele Tabs auf einmal (höchstens ${MAX_BULK_RETURN}).`);
+  const inventory = await items.getItems(deviceKey);
+  const byUrl = new Map(inventory.map((i) => [i.normalizedUrl, i]));
+  const targets = urls.map((u) => byUrl.get(u)).filter((item) => item?.state === 'pc');
+  if (!targets.length) throw badRequest('Keine passenden Items in der PC-Arbeitsliste gefunden.');
+
+  return streamOperation(res, async (write, session) => {
+    write({ phase: 'start', total: targets.length });
+    const results = await cdp.openMany(
+      session,
+      targets.map((t) => t.url),
+      { onProgress: (done, total) => write({ phase: 'progress', done, total }) }
+    );
+    const successUrls = targets.filter((_, i) => results[i]?.success).map((t) => t.normalizedUrl);
+    if (successUrls.length) {
+      await items.setStates(deviceKey, successUrls.map((u) => [u, 'keep']));
+    }
+    write({ phase: 'done', total: targets.length, results });
+  }, deviceSerial);
+}
+
 async function noteHandler({ body, deviceKey }) {
   if (!body.normalizedUrl) throw badRequest('Keine URL angegeben.');
   const result = await items.setNote(deviceKey, body.normalizedUrl, body.note);
@@ -590,6 +633,7 @@ const routes = {
   'POST /api/decisions': decisionsHandler,
   'POST /api/pc/done': pcDoneHandler,
   'POST /api/pc/return': pcReturnHandler,
+  'POST /api/pc/bulk-return': pcBulkReturnHandler,
   'POST /api/note': noteHandler,
   'POST /api/snooze': snoozeHandler,
   'POST /api/restore': restoreHandler,

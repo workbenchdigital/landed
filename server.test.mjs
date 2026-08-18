@@ -503,3 +503,46 @@ test('POST /api/open-external deckelt die Anzahl der Links', async () => {
     assert.match((await res.json()).error, /50/);
   });
 });
+
+// POST /api/pc/bulk-return validiert VOR jedem ADB-Zugriff (siehe Kommentar
+// im Handler) - diese Pfade sind ohne echtes Geraet testbar, der eigentliche
+// Erfolgsfall (cdp.openMany) braucht echte Hardware und ist wie scan/restore/
+// close-decided bewusst nicht per node:test abgedeckt.
+test('POST /api/pc/bulk-return lehnt leere Anfragen ab', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/pc/bulk-return`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /URLs/);
+  });
+});
+
+test('POST /api/pc/bulk-return lehnt ab, wenn keine der URLs in der PC-Arbeitsliste steht', async () => {
+  await withServer(async (base) => {
+    await mergeScan(undefined, [{ id: '1', url: 'https://a.example/', title: 'A' }]);
+    // Item bleibt state 'open' - nicht 'pc', also kein gueltiges Ziel.
+    const res = await fetch(`${base}/api/pc/bulk-return`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrls: ['https://a.example/', 'https://unbekannt.example/'] }),
+    });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /PC-Arbeitsliste/);
+  });
+});
+
+test('POST /api/pc/bulk-return deckelt die Anzahl der Tabs', async () => {
+  await withServer(async (base) => {
+    const urls = Array.from({ length: 201 }, (_, i) => `https://example.com/${i}`);
+    const res = await fetch(`${base}/api/pc/bulk-return`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrls: urls }),
+    });
+    assert.equal(res.status, 400);
+    assert.match((await res.json()).error, /200/);
+  });
+});
