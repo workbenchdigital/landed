@@ -129,6 +129,7 @@
   <div class="strip-foot">
     <div class="strip-legend" id="sortLegend"></div>
     <span class="strip-meta" id="metaInfo" data-i18n="metaInfoInitial">noch nicht eingelesen</span>
+    <span class="strip-meta strip-meta-done" id="doneThisWeek"></span>
   </div>
 </section>
 
@@ -157,6 +158,12 @@
         <button data-sort-value="age" data-i18n="sortAgeLabel" data-i18n-title="sortAgeTitle" title="Älteste Entscheidung zuerst, auch innerhalb einer Domain-Gruppe">Ältestes zuerst</button>
       </div>
       <button id="filterToggleBtn" class="ghost-btn" aria-expanded="false" aria-controls="filterSidebar" data-i18n="filterToggleBtn" data-i18n-title="filterToggleBtnTitle" title="Nach Zustand oder Quelle filtern">Filter</button>
+      <!-- Runde-3-Befund #12: die Textsuche galt bisher nur je Ablage - ein
+           Tab, den man sucht, musste durch bis zu 5 Ablagen einzeln
+           durchprobiert werden. Zeigt bei aktivem Suchbegriff Treffer in
+           ANDEREN Ablagen an (app.js renderCrossTrayHint), Klick springt
+           dorthin, der Suchbegriff bleibt erhalten. -->
+      <div class="cross-tray-hint" id="crossTrayHint" hidden></div>
     </div>
 
     <div class="workbar-view" data-for="archive" hidden>
@@ -204,6 +211,12 @@
     <div id="filterStateList"></div>
     <p class="filter-sidebar-heading" data-i18n="filterHeadingSource">Quelle</p>
     <div id="filterDomainList"></div>
+    <!-- Runde-3-Befund #13: hiddenDomains wirkt geraeteweit/ablagenweit
+         global, diese Liste zeigt aber nur Domains der aktuellen Ablage -
+         eine anderswo ausgeblendete Domain, die hier nicht vorkommt, war
+         sonst unsichtbar und nur ueber "Alle anzeigen" (rechts unten,
+         setzt ALLES zurueck) wieder erreichbar. -->
+    <p class="filter-hidden-elsewhere-note" id="filterHiddenElsewhereNote" hidden></p>
   </div>
   <div class="filter-sidebar-foot">
     <button id="filterResetBtn" class="ghost-btn" data-i18n="filterResetBtn">Alle anzeigen</button>
@@ -213,6 +226,7 @@
 <div class="progress-panel" id="progressPanel">
   <div class="label"><span id="progressLabel" data-i18n="progressLabelInitial">Läuft...</span><span id="progressCount">0/0</span></div>
   <div class="bar"><div class="fill" id="progressFill"></div></div>
+  <button class="ghost-btn progress-cancel" id="progressCancelBtn" data-i18n="progressCancelBtn" hidden>Abbrechen</button>
 </div>
 
 <div id="toasts"></div>

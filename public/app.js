@@ -75,6 +75,11 @@ let focusedKey = null;
 let domainSortMode = localStorage.getItem('domainSortMode') || 'count';
 const collapsedDomains = new Set();
 
+// Vorschlag 7 der Produktanalyse: standardmaessig AUS (localStorage-Default
+// '0'/nicht gesetzt), wie das Farbschema und domainSortMode gemerkt.
+const PC_FOCUS_BATCH_SIZE = 10;
+let pcFocusMode = localStorage.getItem('pcFocusMode') === '1';
+
 // Zustaende, die aktuell AUSGEBLENDET sind (leer = alles sichtbar, der
 // Normalfall). Als ausgeschlossene statt eingeschlossene Menge gespeichert,
 // damit ein neuer Zustand in DECISIONS automatisch sichtbar ist, ohne die
@@ -109,11 +114,13 @@ const pcSectionEl = document.getElementById('view-pc');
 const snoozedSectionEl = document.getElementById('view-snoozed');
 const missingSectionEl = document.getElementById('view-missing');
 const metaInfo = document.getElementById('metaInfo');
+const doneThisWeek = document.getElementById('doneThisWeek');
 const toastsEl = document.getElementById('toasts');
 const progressPanel = document.getElementById('progressPanel');
 const progressLabel = document.getElementById('progressLabel');
 const progressCount = document.getElementById('progressCount');
 const progressFill = document.getElementById('progressFill');
+const progressCancelBtn = document.getElementById('progressCancelBtn');
 const keyboardHint = document.getElementById('keyboardHint');
 const archiveResultsEl = document.getElementById('archiveResults');
 const deviceSwitchEl = document.getElementById('deviceSwitch');
@@ -137,11 +144,18 @@ const VIEWS = [
 ];
 let activeView = 'triage';
 
+// Runde-3-Befund #9: Fehler-Toasts verschwanden bisher nach 4,2s (8s mit
+// Aktions-Knopf) wie jeder andere Toast - zu kurz, um eine oft laengere oder
+// technische Fehlermeldung zu lesen und zu entscheiden, was zu tun ist.
+// Bleiben jetzt wie die ausdruecklich sticky markierten Warnungen stehen,
+// mit demselben Schliessen-Knopf - der Nutzer entscheidet selbst, wann er
+// fertig gelesen hat, statt dass die Meldung ihm wegverschwindet.
 function toast(message, { error = false, sticky = false, actionLabel = null, onAction = null } = {}) {
+  const stays = sticky || error;
   const el = document.createElement('div');
   el.className = 'toast' + (error ? ' error' : '') + (sticky ? ' warning' : '');
   el.textContent = message;
-  if (sticky) {
+  if (stays) {
     const closeBtn = document.createElement('button');
     closeBtn.textContent = '×';
     closeBtn.className = 'toast-close';
@@ -158,7 +172,7 @@ function toast(message, { error = false, sticky = false, actionLabel = null, onA
   toastsEl.appendChild(el);
   // Toasts mit Aktion (z.B. "Rueckgaengig") bleiben laenger stehen - man muss
   // erst realisieren, dass die Bulk-Aktion daneben ging, bevor man reagieren kann.
-  if (!sticky) setTimeout(() => el.remove(), actionLabel ? 8000 : 4200);
+  if (!stays) setTimeout(() => el.remove(), actionLabel ? 8000 : 4200);
 }
 
 // fetch() wirft bei einem Netzwerk-/Verbindungsfehler (Server nicht
@@ -166,6 +180,14 @@ function toast(message, { error = false, sticky = false, actionLabel = null, onA
 // "Failed to fetch" - im Unterschied zu unseren eigenen `throw new Error(...)`
 // bei einer erhaltenen, aber fehlerhaften Serverantwort. Diese Unterscheidung
 // macht daraus eine verstaendliche, umsetzbare Meldung statt Rohtext.
+// Runde-3-Befund #5: ein per AbortController abgebrochener fetch() wirft
+// eine DOMException/Error mit name 'AbortError' - davon unterscheiden, um
+// dem Nutzer statt eines Fehler-Toasts (mit "Einrichtung pruefen"-Aktion,
+// die hier fehl am Platz waere) eine neutrale Bestaetigung zu zeigen.
+function isAbortError(e) {
+  return e?.name === 'AbortError';
+}
+
 function friendlyFetchError(e) {
   if (e instanceof TypeError) {
     return t('errServerUnreachable');
@@ -186,12 +208,25 @@ async function checkAndOpenWizard() {
   }
 }
 
-function setProgress(active, { label, done = 0, total = 0 } = {}) {
+// Runde-3-Befund #5: onCancel optional, weil nicht jede Operation, die
+// dieses Panel benutzt, abbrechbar ist (aktuell: runTransfer, bulkPcReturn -
+// beide streamen via runStep()/AbortController). .onclick statt
+// addEventListener: es gibt immer nur EINE laufende Operation gleichzeitig,
+// jeder setProgress()-Aufruf derselben Operation liefert denselben Callback -
+// ein Ersetzen statt Anhaengen verhindert doppelte Listener ueber die
+// wiederholten Fortschritts-Updates hinweg.
+function setProgress(active, { label, done = 0, total = 0, onCancel } = {}) {
   progressPanel.classList.toggle('active', active);
-  if (!active) return;
+  if (!active) {
+    progressCancelBtn.hidden = true;
+    progressCancelBtn.onclick = null;
+    return;
+  }
   progressLabel.textContent = label;
   progressCount.textContent = `${done}/${total}`;
   progressFill.style.transform = `scaleX(${total ? done / total : 0})`;
+  progressCancelBtn.hidden = !onCancel;
+  progressCancelBtn.onclick = onCancel || null;
 }
 
 function formatMetaInfo(sourceCount, timestamp) {
@@ -203,6 +238,11 @@ async function loadInventory() {
   inventory = await res.json();
   render();
   showStoreAnomaly();
+  // Am selben Ort wie der Bestand selbst neu laden: sonst zeigt der Erledigt-
+  // Zaehler im Kontrollstreifen nach "Erledigt"/Archivieren/Verwerfen weiter
+  // die Zahl vom Seitenstart, obwohl loadInventory() genau jetzt neue Daten
+  // aus derselben Mutation abholt.
+  loadScanMeta();
 }
 
 // Ein leerer Bestand und ein FEHLGESCHLAGENES Lesen sehen in der Oberflaeche
@@ -240,7 +280,12 @@ async function showStoreAnomaly() {
 async function loadScanMeta() {
   const res = await fetch('/api/scan-meta');
   const meta = await res.json();
-  if (meta) metaInfo.textContent = formatMetaInfo(meta.sourceCount, meta.timestamp);
+  // codemouseai-Review auf PR #55: meta.sourceCount als Truthy-Check haette
+  // einen Scan mit 0 gefundenen Tabs ignoriert und die Zeile auf dem Stand
+  // eines fruehren, groesseren Scans stehen gelassen. timestamp entscheidet,
+  // ob ueberhaupt schon gescannt wurde - sourceCount selbst darf 0 sein.
+  metaInfo.textContent = meta.timestamp ? formatMetaInfo(meta.sourceCount ?? 0, meta.timestamp) : t('metaInfoInitial');
+  doneThisWeek.textContent = meta.recentDoneCount ? t('doneThisWeek', { n: meta.recentDoneCount }) : '';
 }
 
 async function scan() {
@@ -251,7 +296,14 @@ async function scan() {
     const res = await fetch('/api/scan', { method: 'POST' });
     if (!res.ok) throw new Error((await res.json()).error || t('unknownError'));
     const data = await res.json();
-    toast(t('scanToast', { count: data.count, sourceCount: data.sourceCount }));
+    // Runde-3-Befund #7: der Toast sagte bisher nur die Gesamtzahl, nie den
+    // Zuwachs - bei 300 Tabs war ohne das faktisch unauffindbar, was ein
+    // Scan tatsaechlich Neues gebracht hat.
+    toast(
+      data.newCount
+        ? t('scanToastWithNew', { count: data.count, sourceCount: data.sourceCount, newCount: data.newCount })
+        : t('scanToast', { count: data.count, sourceCount: data.sourceCount })
+    );
     if (data.warning) toast(data.warning, { sticky: true });
     metaInfo.textContent = formatMetaInfo(data.sourceCount, new Date().toISOString());
     await loadInventory();
@@ -568,15 +620,27 @@ function exportItems(items, format) {
 // lib/launcher.mjs). Ein Klick darin wuerde die Seite in genau diesem Profil
 // oeffnen - ohne die Anmeldungen des Nutzers, ueberall Login-Seiten. Der
 // Server startet stattdessen den Alltagsbrowser.
+// Runde-3-Befund #2: der Server deckelt bei MAX_OPEN_URLS=50 (server.mjs) -
+// bewusst, weil jeder Eintrag einen eigenen Browserprozess/Tab startet, kein
+// Zufallswert. Bei mehr als 50 sichtbaren Eintraegen (im echten Bestand die
+// Regel, nicht die Ausnahme: 283 in "Am PC") lehnte der Server bisher die
+// GESAMTE Anfrage ab - der Knopf versprach "Alle N", oeffnete aber keinen
+// einzigen. In Chargen von OPEN_EXTERNAL_BATCH_SIZE aufteilen haelt das
+// Limit ein UND das Versprechen "alle" gleichzeitig ein.
+const OPEN_EXTERNAL_BATCH_SIZE = 50;
+
 async function openExternal(urls) {
   if (!urls.length) return;
   try {
-    const res = await fetch('/api/open-external', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ urls }),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+    for (let i = 0; i < urls.length; i += OPEN_EXTERNAL_BATCH_SIZE) {
+      const batch = urls.slice(i, i + OPEN_EXTERNAL_BATCH_SIZE);
+      const res = await fetch('/api/open-external', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls: batch }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+    }
   } catch (e) {
     toast(t('openExternalFailedPrefix') + friendlyFetchError(e), { error: true });
   }
@@ -584,8 +648,11 @@ async function openExternal(urls) {
 
 // Gegenstueck zu "Auf Handy uebertragen" (oeffnet Links AM HANDY): oeffnet
 // dieselben URLs stattdessen hier im PC-Browser - fuer die PC-Arbeitsliste,
-// wo per Definition kein Handy-Tab mehr existiert.
+// wo per Definition kein Handy-Tab mehr existiert. Fragt nach wie
+// bulkPcReturn - auf einen Schlag mehrere Dutzend Browserfenster oeffnen ist
+// genauso eine folgenreiche Aktion wie mehrere Tabs am Telefon zu oeffnen.
 function openAllInBrowser(items) {
+  if (!confirm(t('openAllInBrowserConfirm', { n: items.length }))) return;
   openExternal(items.map((item) => item.url));
 }
 
@@ -639,7 +706,8 @@ async function bulkPcDone(items) {
     const firstRejected = results.find((r) => r.status === 'rejected');
     if (firstRejected) throw firstRejected.reason instanceof Error ? firstRejected.reason : new Error(t('genericFailed'));
     selectedKeys.clear();
-    toast(t('bulkDoneToast', { n: items.length }));
+    const urls = items.map((i) => i.normalizedUrl);
+    toast(t('bulkDoneToast', { n: items.length }), { actionLabel: t('undoAction'), onAction: () => undoPcDone(urls) });
   } catch (e) {
     toast(t('errorPrefix') + friendlyFetchError(e), { error: true });
   } finally {
@@ -699,11 +767,15 @@ async function bulkSetSnooze(items, value) {
 async function bulkPcReturn(items) {
   if (!items.length) return;
   if (!confirm(t('bulkReturnConfirm', { n: items.length }))) return;
-  setProgress(true, { label: t('openingTabsLabel'), done: 0, total: 0 });
+  const controller = new AbortController();
+  setProgress(true, { label: t('openingTabsLabel'), done: 0, total: 0, onCancel: () => controller.abort() });
   try {
-    const result = await runStep('/api/pc/bulk-return', t('openingTabsLabel'), {
-      normalizedUrls: items.map((i) => i.normalizedUrl),
-    });
+    const result = await runStep(
+      '/api/pc/bulk-return',
+      t('openingTabsLabel'),
+      { normalizedUrls: items.map((i) => i.normalizedUrl) },
+      { signal: controller.signal, onCancel: () => controller.abort() }
+    );
     setProgress(false);
     const opened = result.total - result.failed;
     toast(
@@ -713,11 +785,15 @@ async function bulkPcReturn(items) {
     selectedKeys.clear();
   } catch (e) {
     setProgress(false);
-    toast(t('errorPrefix') + friendlyFetchError(e), {
-      error: true,
-      actionLabel: t('checkSetupAction'),
-      onAction: checkAndOpenWizard,
-    });
+    if (isAbortError(e)) {
+      toast(t('operationCancelledToast'));
+    } else {
+      toast(t('errorPrefix') + friendlyFetchError(e), {
+        error: true,
+        actionLabel: t('checkSetupAction'),
+        onAction: checkAndOpenWizard,
+      });
+    }
   } finally {
     await loadInventory();
   }
@@ -870,6 +946,36 @@ function renderSelectionBar() {
   bar.appendChild(clearBtn);
 }
 
+// Runde-3-Befund #3/#4: "Erledigt" loeschte bisher sofort und ohne jede
+// Rueckmeldung - kein Toast, kein Rueckgaengig. "Zurueck aufs Telefon"
+// (harmlos, oeffnet nur erneut einen Tab) fragte dagegen vorher nach - die
+// Rueckfragen sassen an der falschen Stelle. Jetzt: kein zusaetzliches
+// confirm() (das waere bei der Haeufigkeit dieser Aktion nur Reibung ohne
+// Wert - 283 von 295 Eintraegen im echten Bestand liegen in "Am PC"),
+// stattdessen ein Toast mit Rueckgaengig-Aktion, gleiches Muster wie
+// setDomainDecision/decideSelection.
+async function undoPcDone(normalizedUrls) {
+  try {
+    const results = await Promise.allSettled(
+      normalizedUrls.map((normalizedUrl) =>
+        fetch('/api/pc/undo-done', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ normalizedUrl }),
+        }).then(async (res) => {
+          if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+        })
+      )
+    );
+    const firstRejected = results.find((r) => r.status === 'rejected');
+    if (firstRejected) throw firstRejected.reason instanceof Error ? firstRejected.reason : new Error(t('genericFailed'));
+  } catch (e) {
+    toast(t('undoFailedPrefix') + friendlyFetchError(e), { error: true });
+  } finally {
+    await loadInventory();
+  }
+}
+
 async function pcDone(item) {
   await flushNoteSave(item.normalizedUrl);
   try {
@@ -879,6 +985,7 @@ async function pcDone(item) {
       body: JSON.stringify({ normalizedUrl: item.normalizedUrl }),
     });
     if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+    toast(t('pcDoneToast'), { actionLabel: t('undoAction'), onAction: () => undoPcDone([item.normalizedUrl]) });
     await loadInventory();
   } catch (e) {
     toast(t('errorPrefix') + friendlyFetchError(e), { error: true });
@@ -1027,10 +1134,23 @@ function formatAgeHint(iso) {
   return t('ageDays', { n: days });
 }
 
+// Eigene Wortwahl statt formatAgeHint() wiederzuverwenden: "seit 12 Tagen"
+// (formatAgeHint, fuer eine andauernde Wartezeit in "Am PC") passt
+// grammatisch nicht zu einem einmaligen vergangenen Ereignis wie einer
+// Archivierung - dort ist "vor 12 Tagen" die richtige Praeposition.
+function formatAgoHint(iso) {
+  const days = daysSince(iso);
+  if (days <= 0) return t('seenBeforeToday');
+  if (days === 1) return t('seenBeforeYesterday');
+  return t('seenBeforeDaysAgo', { n: days });
+}
+
 const filterSidebarEl = document.getElementById('filterSidebar');
 const filterToggleBtn = document.getElementById('filterToggleBtn');
+const crossTrayHintEl = document.getElementById('crossTrayHint');
 const filterStateListEl = document.getElementById('filterStateList');
 const filterDomainListEl = document.getElementById('filterDomainList');
+const filterHiddenElsewhereNoteEl = document.getElementById('filterHiddenElsewhereNote');
 
 // Persistiert beide Filter-Dimensionen und haelt den Zeige-Zustand des
 // Werkzeugleisten-Knopfs synchron - "aktiv gefiltert" heisst jetzt "Zustand
@@ -1104,6 +1224,17 @@ function renderFilterSidebar(listable) {
     .sort((a, b) => b[1] - a[1]) // groesste Quelle zuerst, wie die Standard-Domain-Sortierung der Hauptliste
     .map(([domain, count]) => ({ id: domain, label: domain, dotClass: null, count }));
   renderFilterChecklist(filterDomainListEl, domainOptions, hiddenDomains);
+
+  // Runde-3-Befund #13: hiddenDomains ist global, diese Liste aber je Ablage
+  // (siehe Kommentar an der render()-Aufrufstelle) - eine anderswo
+  // ausgeblendete Domain, die hier nicht vorkommt, war bisher unsichtbar und
+  // nur ueber den globalen "Alle anzeigen"-Reset erreichbar.
+  const visibleDomainIds = new Set(domainOptions.map((o) => o.id));
+  const hiddenElsewhereCount = [...hiddenDomains].filter((d) => !visibleDomainIds.has(d)).length;
+  filterHiddenElsewhereNoteEl.hidden = hiddenElsewhereCount === 0;
+  if (hiddenElsewhereCount > 0) {
+    filterHiddenElsewhereNoteEl.textContent = t('filterHiddenElsewhereNote', { n: hiddenElsewhereCount });
+  }
 }
 
 filterToggleBtn.addEventListener('click', () => setFilterSidebarOpen(!filterSidebarEl.classList.contains('open')));
@@ -1420,14 +1551,22 @@ function renderUrlLine(url) {
   return el;
 }
 
-// "Das hattest du schon mal archiviert/verworfen" - kommt aus archive.jsonl,
-// gesetzt vom Server bei jedem Scan (mergeScan) bzw. bei der Migration.
+// "Das hattest du schon mal archiviert/verworfen" - gesetzt vom Server bei
+// jedem Scan (mergeScan). Vorschlag 5 der Produktanalyse: der Tooltip nennt
+// jetzt Art UND Zeitpunkt der letzten Entscheidung ("vor 12 Tagen bereits
+// verworfen") statt nur eines stummen Zeichens - sofort erkennbar beim
+// Hovern, ohne erst im Archiv nachschauen zu muessen. seenBeforeKind/At
+// kommen aus items.getItems() (Server), koennen theoretisch fehlen, wenn der
+// zugehoerige Archiv-Eintrag zwischen Scan und Anzeige geloescht wurde -
+// dann faellt der Tooltip auf den alten, generischen Text zurueck.
 function renderSeenBeforeBadge(item) {
   if (!item.seenBefore) return null;
   const badge = document.createElement('span');
   badge.className = 'seen-before-badge';
   badge.textContent = '↺';
-  badge.title = t('seenBeforeTitle');
+  badge.title = item.seenBeforeKind
+    ? t('seenBeforeTitleDetailed', { kind: archiveKindLabel(item.seenBeforeKind), when: formatAgoHint(item.seenBeforeAt) })
+    : t('seenBeforeTitle');
   return badge;
 }
 
@@ -1519,8 +1658,8 @@ function makeNoteInput(item) {
 // stattdessen erledigt/zurueck/Notiz.
 function renderPcView(items) {
   pcSectionEl.innerHTML = '';
-  renderSectionHead(pcSectionEl, t('pcSectionTitle'), items.length, t('pcSectionSub'));
   if (!items.length) {
+    renderSectionHead(pcSectionEl, t('pcSectionTitle'), 0, t('pcSectionSub'));
     renderEmptyState(pcSectionEl, t('pcEmptyTitle'), t('pcEmptyBody'));
     return;
   }
@@ -1529,8 +1668,51 @@ function renderPcView(items) {
   // auch die per Text-/Domainfilter gerade ausgeblendeten - bei aktivem
   // Filter waeren das ueberraschend mehr Tabs als sichtbar. Zaehler und
   // Aktion haengen jetzt beide an der gefilterten Menge.
-  const shown = visibleItems(items);
-  if (!shown.length) return renderNoFilterMatch(pcSectionEl);
+  //
+  // Runde-3-Befund #14: derselbe Grundsatz galt bisher NICHT fuer den
+  // Zaehler in der Kopfzeile - der zeigte immer items.length (Ablage
+  // insgesamt), auch wenn ein Filter die sichtbare Liste auf wenige Zeilen
+  // reduzierte. "283" in der Kopfzeile ueber einer Liste mit 5 sichtbaren
+  // Treffern widersprach sich selbst. Kopfzeile jetzt mit derselben
+  // gefilterten Menge wie die Liste darunter - der Gesamtwert der Ablage
+  // bleibt ueber den Ablagen-Reiter (trayCount) weiterhin einen Blick
+  // entfernt.
+  const filtered = visibleItems(items);
+  renderSectionHead(pcSectionEl, t('pcSectionTitle'), filtered.length, t('pcSectionSub'));
+  if (!filtered.length) return renderNoFilterMatch(pcSectionEl);
+
+  // Vorschlag 7 der Produktanalyse: zuschaltbarer Fokus-Modus, standardmaessig
+  // aus. Reine Anzeigefilterung - keine Zeile hier veraendert Daten, Zustand
+  // oder Reihenfolge auf der Platte, sie entscheidet nur, wie viel von der
+  // bereits sortierten/gefilterten Menge gerendert wird. Absichtlich KEIN
+  // eigener "Portion"-Zustand: einfach immer die ersten
+  // PC_FOCUS_BATCH_SIZE der aktuellen Sortierung zeigen - sobald Items die
+  // Ablage verlassen (erledigt/zurueck), ruecken die naechsten beim
+  // naechsten render() automatisch nach, ohne dass irgendwo mitgezaehlt
+  // werden muesste, was schon "dran war".
+  const sortedFlat = groupByDomain(filtered).flatMap(([, group]) => group);
+  const focusApplies = pcFocusMode && sortedFlat.length > PC_FOCUS_BATCH_SIZE;
+  const shown = focusApplies ? sortedFlat.slice(0, PC_FOCUS_BATCH_SIZE) : sortedFlat;
+
+  const focusToggle = document.createElement('label');
+  focusToggle.className = 'pc-focus-toggle';
+  const focusCb = document.createElement('input');
+  focusCb.type = 'checkbox';
+  focusCb.checked = pcFocusMode;
+  focusCb.addEventListener('change', () => {
+    pcFocusMode = focusCb.checked;
+    localStorage.setItem('pcFocusMode', pcFocusMode ? '1' : '0');
+    render();
+  });
+  focusToggle.appendChild(focusCb);
+  focusToggle.append(t('pcFocusToggleLabel', { n: PC_FOCUS_BATCH_SIZE }));
+  pcSectionEl.appendChild(focusToggle);
+  if (focusApplies) {
+    const focusHint = document.createElement('p');
+    focusHint.className = 'hint';
+    focusHint.textContent = t('pcFocusHint', { shown: shown.length, total: sortedFlat.length });
+    pcSectionEl.appendChild(focusHint);
+  }
 
   const openAllBtn = document.createElement('button');
   openAllBtn.className = 'ghost-btn';
@@ -1538,6 +1720,15 @@ function renderPcView(items) {
   openAllBtn.title = t('openAllInBrowserTitle');
   openAllBtn.addEventListener('click', () => openAllInBrowser(shown));
   pcSectionEl.appendChild(openAllBtn);
+
+  // Eigener Hinweistext statt des #keyboardHint-Absatzes: der lebt fest in
+  // view-triage's Markup (index.html), diese Ablage baut ihren Inhalt
+  // komplett aus JS auf. D/R ergaenzen hier die Pfeiltasten-Navigation, die
+  // bereits laenger funktioniert (siehe keydown-Handler weiter unten).
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = t('pcKeyboardHintText');
+  pcSectionEl.appendChild(hint);
 
   for (const [domain, group] of groupByDomain(shown)) {
     const list = renderDomainGroup(pcSectionEl, domain, group, { selectable: true });
@@ -1605,15 +1796,19 @@ function renderPcView(items) {
 // oder ueberfaellig) bleiben bewusst stehen, statt automatisch wieder in
 // Sichten/Am PC zurueckzufallen - "Jetzt anzeigen" ist die einzige Art, sie
 // hier herauszunehmen. Nach Datum sortiert, Faellige/Ueberfaellige zuerst.
+// Runde-3-Befund #14: Kopfzeilen-Zaehler folgt jetzt der gefilterten Menge
+// wie die Liste darunter, statt immer die Gesamtzahl der Ablage zu zeigen
+// (siehe renderPcView fuer die ausfuehrliche Begruendung).
 function renderSnoozedView(items) {
   snoozedSectionEl.innerHTML = '';
-  renderSectionHead(snoozedSectionEl, t('viewSnoozed'), items.length, t('snoozedSectionSub'));
   if (!items.length) {
+    renderSectionHead(snoozedSectionEl, t('viewSnoozed'), 0, t('snoozedSectionSub'));
     renderEmptyState(snoozedSectionEl, t('snoozedEmptyTitle'), t('snoozedEmptyBody'));
     return;
   }
 
   const shown = visibleItems(items);
+  renderSectionHead(snoozedSectionEl, t('viewSnoozed'), shown.length, t('snoozedSectionSub'));
   if (!shown.length) return renderNoFilterMatch(snoozedSectionEl);
 
   const todayYmd = localYmd();
@@ -1660,15 +1855,18 @@ function renderSnoozedView(items) {
 // Umbau) stillschweigend aus dem Bestand verschwinden zu lassen. Bietet
 // nach 3 Fehlversuchen eine Empfehlung an, handelt aber nie automatisch -
 // die Entscheidungs-Knoepfe bleiben die einzige Aktion.
+// Runde-3-Befund #14: Kopfzeilen-Zaehler folgt der gefilterten Menge (siehe
+// renderPcView fuer die Begruendung).
 function renderMissingView(items) {
   missingSectionEl.innerHTML = '';
-  renderSectionHead(missingSectionEl, t('viewMissing'), items.length, t('missingSectionSub'));
   if (!items.length) {
+    renderSectionHead(missingSectionEl, t('viewMissing'), 0, t('missingSectionSub'));
     renderEmptyState(missingSectionEl, t('missingEmptyTitle'), t('missingEmptyBody'));
     return;
   }
 
   const shown = visibleItems(items);
+  renderSectionHead(missingSectionEl, t('viewMissing'), shown.length, t('missingSectionSub'));
   if (!shown.length) return renderNoFilterMatch(missingSectionEl);
 
   for (const [domain, group] of groupByDomain(shown)) {
@@ -1742,9 +1940,15 @@ async function refreshPendingHealth() {
   updateTransferBtnState();
 }
 
+// Runde-3-Befund #14: Kopfzeilen-Zaehler folgt der gefilterten Menge wie die
+// Liste darunter (siehe renderPcView) - NICHT zu verwechseln mit
+// pendingTransferPossible weiter unten, das bewusst an der ungefilterten
+// Menge haengt, weil der Uebertragen-Knopf am echten Bestand handelt, nicht
+// an der Anzeige.
 function renderPendingView(items) {
   pendingSectionEl.innerHTML = '';
-  renderSectionHead(pendingSectionEl, t('viewPending'), items.length, t('pendingSectionSub'));
+  const filtered = visibleItems(items);
+  renderSectionHead(pendingSectionEl, t('viewPending'), filtered.length, t('pendingSectionSub'));
 
   const headBar = document.createElement('div');
   headBar.className = 'commit-group';
@@ -1773,10 +1977,9 @@ function renderPendingView(items) {
 
   // pendingTransferPossible bleibt bewusst gegen die ungefilterte Menge oben -
   // der Uebertragen-Knopf handelt am echten Bestand, nicht an der Anzeige.
-  const shown = visibleItems(items);
-  if (!shown.length) return renderNoFilterMatch(pendingSectionEl);
+  if (!filtered.length) return renderNoFilterMatch(pendingSectionEl);
 
-  for (const [state, group] of groupByState(shown)) {
+  for (const [state, group] of groupByState(filtered)) {
     const heading = document.createElement('p');
     heading.className = 'state-group-heading';
     heading.textContent = `${decisionLabel(state)} (${group.length})`;
@@ -1801,19 +2004,34 @@ function renderPendingView(items) {
   }
 }
 
+// Eine Archiv-Zeile, gemeinsam fuer Such- und Blaetteransicht - Notiz reist
+// seit Stufe D mit ins Archiv (lib/items.mjs) und ist durchsuchbar, hier als
+// Tooltip sichtbar, damit ein Treffer per Notiztext nicht wie ein Zufallsfund
+// wirkt. Keine Entscheidungsknoepfe: Archiveintraege sind Historie, keine
+// offene Entscheidung.
+function makeArchiveRow(item) {
+  const row = document.createElement('div');
+  row.className = 'tab-row';
+  if (item.note) row.title = item.note;
+  const swatch = document.createElement('span');
+  swatch.className = 'swatch ' + (ARCHIVE_KIND_SWATCH[item.kind] || '');
+  row.appendChild(swatch);
+  row.appendChild(renderTitleBlock(item));
+  const tag = document.createElement('span');
+  tag.className = 'kind-tag ' + item.kind;
+  tag.textContent = archiveKindLabel(item.kind);
+  const when = document.createElement('span');
+  when.className = 'missing-hint';
+  when.textContent = new Date(item.at).toLocaleDateString(dateLocale());
+  row.appendChild(makeRowActions(tag, when));
+  return row;
+}
+
 // Archiv-Suche: eigener Datenpfad (archive.jsonl statt items.json), aber
 // dieselben Bauteile (groupByDomain, renderTitleBlock) wie die Hauptliste -
-// kein zweiter Renderpfad. Ergebnisse sind Historie, keine offenen
-// Entscheidungen: keine Entscheidungsknoepfe, nur Art + Datum als Hinweis.
+// kein zweiter Renderpfad. Nach Domain gruppiert, wie die uebrigen Ablagen.
 function renderArchiveResults(results, query) {
   archiveResultsEl.innerHTML = '';
-
-  if (!query.trim()) {
-    renderSectionHead(archiveResultsEl, t('viewArchive'), null, t('archiveSectionSub'));
-    renderEmptyState(archiveResultsEl, t('archiveSearchEmptyTitle'), t('archiveSearchEmptyBody'));
-    return;
-  }
-
   renderSectionHead(archiveResultsEl, t('viewArchive'), results.length, t('archiveSearchResultsSub', { query }));
 
   if (!results.length) {
@@ -1839,44 +2057,86 @@ function renderArchiveResults(results, query) {
 
     const rows = document.createElement('div');
     rows.className = 'domain-rows';
-    for (const item of items) {
-      const row = document.createElement('div');
-      row.className = 'tab-row';
-      // Notiz reist seit Stufe D mit ins Archiv (lib/items.mjs) und ist
-      // durchsuchbar - hier als Tooltip sichtbar, damit ein Treffer per
-      // Notiztext nicht wie ein Zufallsfund wirkt.
-      if (item.note) row.title = item.note;
-      const swatch = document.createElement('span');
-      swatch.className = 'swatch ' + (ARCHIVE_KIND_SWATCH[item.kind] || '');
-      row.appendChild(swatch);
-      row.appendChild(renderTitleBlock(item));
-      const tag = document.createElement('span');
-      tag.className = 'kind-tag ' + item.kind;
-      tag.textContent = archiveKindLabel(item.kind);
-      const when = document.createElement('span');
-      when.className = 'missing-hint';
-      when.textContent = new Date(item.at).toLocaleDateString(dateLocale());
-      row.appendChild(makeRowActions(tag, when));
-      rows.appendChild(row);
-    }
+    for (const item of items) rows.appendChild(makeArchiveRow(item));
     group.appendChild(rows);
     archiveResultsEl.appendChild(group);
   }
 }
 
-async function runArchiveSearch(query) {
-  if (!query.trim()) {
-    renderArchiveResults([], '');
-    return;
+// Vorschlag 4 der Produktanalyse: ohne Suchbegriff durchblaettern statt einer
+// leeren Ablage. Bewusst FLACH und chronologisch statt nach Domain gruppiert
+// wie renderArchiveResults oben - eine Domain-Gruppierung wuerde die
+// Datumssortierung genau in dem Fall aufheben, in dem "neueste zuerst" der
+// ganze Witz der Ansicht ist. Seitenweise nachladbar (ARCHIVE_PAGE_SIZE),
+// haengt bei reset:false nur an, statt komplett neu zu rendern.
+const ARCHIVE_PAGE_SIZE = 50;
+let archiveBrowseOffset = 0;
+// codemouseai-Review auf PR #56: ein schneller Doppelklick auf "Mehr laden"
+// las denselben archiveBrowseOffset zweimal, bevor die erste Anfrage
+// zurueckkam - beide haengten dieselbe Seite an, sichtbar als doppelte
+// Zeilen. requestId macht nur die JEWEILS LETZTE laufende Anfrage
+// massgeblich; jede aeltere wird beim Zurueckkommen stillschweigend
+// verworfen statt gerendert zu werden.
+let archiveBrowseRequestId = 0;
+
+function renderArchiveBrowse(results, { reset, hasMore }) {
+  const existingMoreBtn = archiveResultsEl.querySelector('.archive-load-more');
+  if (existingMoreBtn) existingMoreBtn.remove();
+
+  if (reset) {
+    archiveResultsEl.innerHTML = '';
+    renderSectionHead(archiveResultsEl, t('viewArchive'), null, t('archiveSectionSub'));
+    if (!results.length) {
+      renderEmptyState(archiveResultsEl, t('archiveSearchEmptyTitle'), t('archiveSearchEmptyBody'));
+      return;
+    }
   }
+
+  const list = archiveResultsEl.querySelector('.flat-list') || makeFlatList(archiveResultsEl);
+  for (const item of results) list.appendChild(makeArchiveRow(item));
+
+  if (hasMore) {
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'ghost-btn archive-load-more';
+    moreBtn.textContent = t('archiveLoadMoreBtn');
+    moreBtn.addEventListener('click', () => loadArchiveBrowsePage({ reset: false }));
+    archiveResultsEl.appendChild(moreBtn);
+  }
+}
+
+async function loadArchiveBrowsePage({ reset }) {
+  if (reset) archiveBrowseOffset = 0;
+  const requestId = ++archiveBrowseRequestId;
+  const moreBtn = archiveResultsEl.querySelector('.archive-load-more');
+  if (moreBtn) moreBtn.disabled = true;
   try {
     const includeDropped = document.getElementById('archiveIncludeDropped').checked;
-    const params = new URLSearchParams({ q: query });
+    const params = new URLSearchParams({ limit: String(ARCHIVE_PAGE_SIZE), offset: String(archiveBrowseOffset) });
     if (includeDropped) params.set('includeDropped', '1');
     const res = await fetch(`/api/search?${params}`);
     if (!res.ok) throw new Error((await res.json()).error || t('searchFailedGeneric'));
     const { results } = await res.json();
-    renderArchiveResults(results, query);
+    if (requestId !== archiveBrowseRequestId) return; // eine neuere Anfrage ist schon unterwegs oder fertig
+    renderArchiveBrowse(results, { reset, hasMore: results.length === ARCHIVE_PAGE_SIZE });
+    archiveBrowseOffset += results.length;
+  } catch (e) {
+    if (requestId !== archiveBrowseRequestId) return;
+    toast(t('archiveSearchFailedPrefix') + friendlyFetchError(e), { error: true });
+    if (moreBtn) moreBtn.disabled = false;
+  }
+}
+
+async function runArchiveSearch(query) {
+  const q = query.trim();
+  if (!q) return loadArchiveBrowsePage({ reset: true });
+  try {
+    const includeDropped = document.getElementById('archiveIncludeDropped').checked;
+    const params = new URLSearchParams({ q });
+    if (includeDropped) params.set('includeDropped', '1');
+    const res = await fetch(`/api/search?${params}`);
+    if (!res.ok) throw new Error((await res.json()).error || t('searchFailedGeneric'));
+    const { results } = await res.json();
+    renderArchiveResults(results, q);
   } catch (e) {
     toast(t('archiveSearchFailedPrefix') + friendlyFetchError(e), { error: true });
   }
@@ -1930,6 +2190,45 @@ function partition() {
   };
 }
 
+const CROSS_TRAY_VIEW_IDS = ['triage', 'pending', 'pc', 'snoozed', 'missing'];
+
+// Runde-3-Befund #12: die Textsuche galt bisher nur je Ablage - ein
+// bestimmter Tab liess sich nur finden, indem man den Suchbegriff durch bis
+// zu 5 Ablagen einzeln durchprobiert. Eine vollstaendige bestandsweite
+// Suchansicht waere ein groesserer Umbau fuer diesen schmalen Anwendungsfall
+// ("wo liegt mein Tab gerade") - stattdessen ein Hinweis unter dem Suchfeld,
+// der zeigt, wo SONST noch etwas passt, mit einem Klick dorthin (Suchbegriff
+// bleibt erhalten, da filterText modulweit ist). Nur matchesFilter (Text),
+// nicht State-/Domain-Filter: die Frage ist "wo ist mein Tab", nicht "was
+// zeigt meine aktuelle Feineinstellung in einer anderen Ablage".
+function renderCrossTrayHint(p) {
+  if (!filterText.trim()) {
+    crossTrayHintEl.hidden = true;
+    return;
+  }
+  const setsByView = { triage: p.listable, pending: p.pendingItems, pc: p.pcItems, snoozed: p.snoozedItems, missing: p.missingItems };
+  const hits = CROSS_TRAY_VIEW_IDS.filter((id) => id !== activeView)
+    .map((id) => ({ id, count: setsByView[id].filter(matchesFilter).length }))
+    .filter((h) => h.count > 0);
+  if (!hits.length) {
+    crossTrayHintEl.hidden = true;
+    return;
+  }
+  crossTrayHintEl.hidden = false;
+  crossTrayHintEl.innerHTML = '';
+  crossTrayHintEl.append(t('crossTrayHintPrefix'));
+  hits.forEach((hit, i) => {
+    if (i > 0) crossTrayHintEl.append(', ');
+    const view = VIEWS.find((v) => v.id === hit.id);
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'cross-tray-link';
+    link.textContent = `${t(view.labelKey)} (${hit.count})`;
+    link.addEventListener('click', () => setView(hit.id));
+    crossTrayHintEl.appendChild(link);
+  });
+}
+
 function trayCount(viewId, p) {
   if (viewId === 'triage') return p.listable.filter((i) => i.state === 'open').length;
   if (viewId === 'pending') return p.pendingItems.length;
@@ -1939,8 +2238,19 @@ function trayCount(viewId, p) {
   return null; // Archiv hat keine offene Menge - es ist Gedaechtnis, kein Stapel
 }
 
+// Faelligkeit war bisher nur ein einmaliger Toast beim Start
+// (checkDueSnoozeBanner) - wird der weggeklickt oder wird eine Wiedervorlage
+// waehrend einer offenen Sitzung faellig, gab es danach kein Signal mehr
+// ausser dem Klick in genau diese Ablage. Diese Zahl bleibt dauerhaft
+// sichtbar, solange etwas faellig ist.
+function dueSnoozeCount(p) {
+  const todayYmd = localYmd();
+  return p.snoozedItems.filter((i) => i.snoozeUntil <= todayYmd).length;
+}
+
 function renderTrays(p) {
   traysEl.innerHTML = '';
+  const dueCount = dueSnoozeCount(p);
   for (const view of VIEWS) {
     const count = trayCount(view.id, p);
     const btn = document.createElement('button');
@@ -1955,6 +2265,13 @@ function renderTrays(p) {
       c.className = 'tray-count';
       c.textContent = String(count);
       btn.appendChild(c);
+    }
+    if (view.id === 'snoozed' && dueCount > 0) {
+      const due = document.createElement('span');
+      due.className = 'tray-due';
+      due.textContent = String(dueCount);
+      due.title = dueCount === 1 ? t('dueSnoozeOne') : t('dueSnoozeMany', { n: dueCount });
+      btn.appendChild(due);
     }
     btn.addEventListener('click', () => setView(view.id));
     traysEl.appendChild(btn);
@@ -1986,7 +2303,14 @@ function setView(id) {
     bar.hidden = !bar.dataset.for.split(' ').includes(id);
   }
   render();
-  if (id === 'archive') document.getElementById('archiveSearchInput').focus();
+  if (id === 'archive') {
+    document.getElementById('archiveSearchInput').focus();
+    // Vorschlag 4: beim Betreten sofort blaettern/erneut suchen statt der
+    // alten "Wonach suchst du?"-Aufforderung - deckt auch den Fall ab, dass
+    // seit dem letzten Besuch etwas Neues archiviert wurde (z.B. per "Am
+    // PC"-Erledigt-Kuerzel).
+    runArchiveSearch(document.getElementById('archiveSearchInput').value);
+  }
   if (id === 'pending') refreshPendingHealth();
 }
 
@@ -1997,6 +2321,7 @@ function render() {
   renderPcView(p.pcItems);
   renderSnoozedView(p.snoozedItems);
   renderMissingView(p.missingItems);
+  renderCrossTrayHint(p);
 
   const listable = p.listable;
   // Die Filter-Seitenleiste zeigt jetzt in jeder Ablage deren eigene Zustands-
@@ -2186,6 +2511,16 @@ document.addEventListener('keydown', (e) => {
     setState(focusedKey, KEYMAP[key]);
     return;
   }
+  // "Am PC" hat keine B/P/A/V-Entscheidungsknoepfe (die Entscheidung ist ja
+  // bereits gefallen), aber Erledigt/Zurueck aufs Handy - bislang nur per
+  // Maus erreichbar, obwohl Pfeiltasten-Navigation hier laengst funktioniert
+  // (siehe ArrowDown/Up unten). 283 von 295 Eintraegen im echten Bestand
+  // liegen in genau dieser Ablage.
+  if (activeView === 'pc' && focusedKey) {
+    const item = inventory.find((i) => i.normalizedUrl === focusedKey);
+    if (item && key === 'd') { e.preventDefault(); pcDone(item); return; }
+    if (item && key === 'r') { e.preventDefault(); pcReturn(item); return; }
+  }
   if (key === 'w' && focusedKey) {
     const slot = document.querySelector(`.tab-row[data-key="${CSS.escape(focusedKey)}"] .snooze-slot`);
     if (slot) {
@@ -2225,9 +2560,15 @@ async function streamNdjson(res, onEvent) {
 // bei einer Fehlerantwort, sonst { total, failed, archivedCount } aus dem
 // abschliessenden "done"-Event. body optional (bulkPcReturn braucht die
 // ausgewaehlten normalizedUrls, runTransfer weiterhin keinen Body).
-async function runStep(url, label, body) {
+//
+// Runde-3-Befund #5: signal an fetch() durchgereicht, onCancel bei JEDEM
+// internen setProgress()-Aufruf mitgegeben - sonst wuerde schon das erste
+// "start"/"progress"-Ereignis den Abbrechen-Knopf wieder verstecken (siehe
+// setProgress(), das onCancel bei jedem Aufruf ersetzt).
+async function runStep(url, label, body, { signal, onCancel } = {}) {
   const res = await fetch(url, {
     method: 'POST',
+    signal,
     ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
   });
   if (!res.ok) {
@@ -2245,15 +2586,22 @@ async function runStep(url, label, body) {
   await streamNdjson(res, (evt) => {
     if (evt.phase === 'start') {
       total = evt.total;
-      setProgress(true, { label, done: 0, total });
+      setProgress(true, { label, done: 0, total, onCancel });
       if (evt.backupFile) toast(t('backupSavedPrefix') + evt.backupFile);
     } else if (evt.phase === 'progress') {
-      setProgress(true, { label, done: evt.done, total: evt.total });
+      setProgress(true, { label, done: evt.done, total: evt.total, onCancel });
     } else if (evt.phase === 'done') {
       failed = evt.results.filter((r) => r.success === false).length;
       archivedCount = evt.archivedCount || 0;
     } else if (evt.phase === 'error') {
-      toast(t('errorPrefix') + evt.message, { error: true, actionLabel: t('checkSetupAction'), onAction: checkAndOpenWizard });
+      // Runde-3-Befund #1: hier nur zu toasten und weiterzulaufen liess
+      // runStep() normal zurueckkehren - der Aufrufer sah `total` aus dem
+      // fruehen "start"-Ereignis und `failed: 0` (kein "done" kam je an) und
+      // meldete faelschlich Erfolg, obendrein NACH diesem Fehler-Toast. Jeder
+      // Aufrufer von runStep() hat bereits einen eigenen catch mit derselben
+      // Setup-Pruefen-Aktion (runTransfer, bulkPcReturn) - kein Toast hier,
+      // sonst doppelt.
+      throw new Error(evt.message);
     }
   });
   return { total, failed, archivedCount };
@@ -2267,11 +2615,19 @@ async function runTransfer() {
   const btn = document.getElementById('transferBtn');
   if (!confirm(t('transferConfirm'))) return;
   btn.disabled = true;
-  setProgress(true, { label: t('closingTabsLabel'), done: 0, total: 0 });
+  // Runde-3-Befund #5: EIN Controller fuer beide Schritte (schliessen UND
+  // oeffnen) - der Abbrechen-Knopf soll den ganzen "Uebertragen"-Vorgang
+  // stoppen, egal in welchem der zwei Schritte er gedrueckt wird. abort()
+  // waehrend Schritt 1 laesst runStep() fuer Schritt 2 gar nicht erst
+  // starten (die zweite fetch() sieht sofort ein bereits abgebrochenes
+  // Signal).
+  const controller = new AbortController();
+  const opts = { signal: controller.signal, onCancel: () => controller.abort() };
+  setProgress(true, { label: t('closingTabsLabel'), done: 0, total: 0, onCancel: opts.onCancel });
   try {
-    const closeResult = await runStep('/api/close-decided', t('closingTabsLabel'));
-    setProgress(true, { label: t('openingTabsLabel'), done: 0, total: 0 });
-    const openResult = await runStep('/api/restore', t('openingTabsLabel'));
+    const closeResult = await runStep('/api/close-decided', t('closingTabsLabel'), undefined, opts);
+    setProgress(true, { label: t('openingTabsLabel'), done: 0, total: 0, onCancel: opts.onCancel });
+    const openResult = await runStep('/api/restore', t('openingTabsLabel'), undefined, opts);
     setProgress(false);
     const parts = [];
     if (closeResult.total) parts.push(t('closedCountText', { n: closeResult.total }) + (closeResult.failed ? t('failedSuffixText', { n: closeResult.failed }) : ''));
@@ -2280,15 +2636,24 @@ async function runTransfer() {
     toast(parts.length ? parts.join(' · ') : t('nothingToTransfer'), {
       error: closeResult.failed > 0 || openResult.failed > 0,
     });
-    await loadInventory();
   } catch (e) {
-    toast(t('transferFailedPrefix') + friendlyFetchError(e), {
-      error: true,
-      actionLabel: t('checkSetupAction'),
-      onAction: checkAndOpenWizard,
-    });
     setProgress(false);
+    if (isAbortError(e)) {
+      toast(t('operationCancelledToast'));
+    } else {
+      toast(t('transferFailedPrefix') + friendlyFetchError(e), {
+        error: true,
+        actionLabel: t('checkSetupAction'),
+        onAction: checkAndOpenWizard,
+      });
+    }
   } finally {
+    // Wie bulkPcReturn: auch nach einem Fehler neu laden, nicht nur beim
+    // Erfolg - der erste der beiden Schritte kann bereits Tabs geschlossen
+    // und archiviert haben, bevor der zweite (oeffnen) mitten drin
+    // abbricht. Ohne das zeigte die Oberflaeche bis zum naechsten Scan
+    // einen Stand, der nicht mehr dem echten Bestand entsprach.
+    await loadInventory();
     btn.disabled = false;
     updateTransferBtnState();
   }
@@ -2394,7 +2759,7 @@ deviceSwitchEl.addEventListener('change', async () => {
     });
     if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
     toast(t('deviceSwitchedToast'));
-    await Promise.all([loadInventory(), loadScanMeta()]);
+    await loadInventory();
   } catch (e) {
     toast(t('deviceSwitchFailedPrefix') + friendlyFetchError(e), { error: true });
   }
@@ -2460,7 +2825,6 @@ renderLegend();
 renderSortStripSkeleton();
 setView('triage');
 loadInventory().then(checkDueSnoozeBanner);
-loadScanMeta();
 loadDevices();
 maybeAutoOpenWizard();
 scheduleMidnightRerender();

@@ -268,6 +268,26 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .field input:focus-visible { outline: none; }
 .field-wide { max-width: 620px; }
 
+/* Runde-3-Befund #12: bestandsweiter Suchhinweis unter dem Filterfeld -
+   flex-basis:100% zwingt es in eine eigene Zeile innerhalb der
+   flex-verpackten .workbar-view, statt sich zwischen die Steuerelemente zu
+   quetschen. */
+.cross-tray-hint {
+  flex-basis: 100%;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.cross-tray-link {
+  border: none;
+  background: transparent;
+  color: var(--signal);
+  font-size: 0.8rem;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.cross-tray-link:hover { opacity: 0.8; }
+
 /* .filter-check ist fuer die volle Breite der Filter-Seitenleiste gedacht -
    hier nur ein einzelner Schalter in der Werkzeugleiste, deshalb enger. */
 .archive-dropped-toggle { padding: 0.4rem 0.5rem; white-space: nowrap; }
@@ -431,6 +451,12 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   font-size: 0.74rem;
   color: var(--ink-soft);
 }
+.strip-meta-done {
+  margin-left: 0;
+}
+.strip-meta-done:empty {
+  display: none;
+}
 
 /* ---- Ablagen + Werkzeugleiste (bleiben beim Scrollen stehen) ----
    Der Kontrollstreifen darueber scrollt bewusst weg: den liest man beim
@@ -480,6 +506,19 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 }
 .tray[data-empty="true"] { opacity: 0.5; }
 .tray[data-empty="true"] .tray-count { color: var(--ink-soft); font-weight: 500; }
+.tray-due {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--drop-text);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
 
 .tray[aria-selected="true"] {
   background: var(--card);
@@ -990,6 +1029,22 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   font-weight: 600;
 }
 .filter-sidebar-heading:first-child { margin-top: 0.3rem; }
+.filter-hidden-elsewhere-note {
+  margin: 0.4rem 0.6rem 0;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.pc-focus-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.6rem;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.pc-focus-toggle input { accent-color: var(--signal); width: 1rem; height: 1rem; }
 
 .filter-check {
   display: flex;
@@ -1170,6 +1225,10 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   border-radius: 999px;
   background: var(--sunken);
   overflow: hidden;
+}
+.progress-panel .progress-cancel {
+  margin-top: 0.6rem;
+  width: 100%;
 }
 .progress-panel .bar .fill {
   height: 100%;

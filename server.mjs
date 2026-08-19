@@ -142,15 +142,37 @@ async function withAdbSession(fn, deviceSerial) {
 // Streamt Fortschritt als NDJSON (eine JSON-Zeile pro Ereignis), damit die UI
 // bei Operationen ueber viele Tabs (mit Rate-Limiting-Pause pro Tab) nicht
 // minutenlang ohne Rueckmeldung haengt.
-async function streamOperation(res, fn, deviceSerial) {
+//
+// Runde-3-Befund #5: req.on('close') feuert bei JEDER Verbindungs-Beendigung,
+// auch bei einem ganz normal durchgelaufenen Request - res.writableEnded
+// unterscheidet die beiden Faelle. Nur wenn die Antwort beim Verbindungsende
+// noch NICHT fertig geschrieben ist, war es ein echter (Client-seitiger)
+// Abbruch, kein regulaeres Fertigwerden. fn() bekommt das AbortSignal
+// durchgereicht und laeuft trotzdem bis zum Ende weiter (nicht abgebrochen!)
+// - genau das laesst cdp.openMany/closeMany selbst entscheiden, VOR welchem
+// Tab sie aufhoeren, und die anschliessenden DB-Schreibvorgaenge (z.B.
+// applyCloseResults) sichern, was bis dahin tatsaechlich geklappt hat.
+async function streamOperation(req, res, fn, deviceSerial) {
   res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8' });
-  const write = (obj) => res.write(JSON.stringify(obj) + '\n');
+  const write = (obj) => {
+    try {
+      res.write(JSON.stringify(obj) + '\n');
+    } catch {
+      // Verbindung ist bereits weg (Client hat abgebrochen) - nichts mehr zu tun
+    }
+  };
+  const controller = new AbortController();
+  const onClose = () => {
+    if (!res.writableEnded) controller.abort();
+  };
+  req.on('close', onClose);
   try {
-    await withAdbSession((session) => fn(write, session), deviceSerial);
+    await withAdbSession((session) => fn(write, session, controller.signal), deviceSerial);
   } catch (err) {
     console.error(err); // volle technische Details im Log, gekuerzte Fassung an den Client
     write({ phase: 'error', message: friendlyError(err) });
   } finally {
+    req.off('close', onClose);
     res.end();
   }
 }
@@ -184,6 +206,7 @@ async function scanHandler({ deviceKey, deviceSerial }) {
       count: result.count,
       sourceCount: result.sourceCount,
       previousSourceCount: result.previousSourceCount,
+      newCount: result.newCount,
       // Warnschwelle: >15% weniger als beim letzten Scan, bei mindestens 20
       // Tabs zuvor - typisches Symptom eines zwischenzeitlichen Chrome-
       // Neustarts, bei dem CDP nicht gerenderte Tabs schlicht weglaesst.
@@ -251,8 +274,9 @@ async function openExternalHandler({ body }) {
 // frischen Scan angezeigt, nicht aus gespeicherten Daten geladen).
 async function scanMetaHandler({ deviceKey }) {
   const meta = await items.getMeta(deviceKey);
-  if (!meta.lastScan) return null;
-  return { sourceCount: meta.lastScanSourceCount, timestamp: meta.lastScan };
+  const recentDoneCount = await items.getRecentArchiveCount(7);
+  if (!meta.lastScan) return { recentDoneCount };
+  return { sourceCount: meta.lastScanSourceCount, timestamp: meta.lastScan, recentDoneCount };
 }
 
 async function bookmarkFoldersHandler() {
@@ -338,6 +362,17 @@ async function pcDoneHandler({ body, deviceKey }) {
   return result;
 }
 
+// Runde-3-Befund #3/#4: Gegenstueck zu pcDoneHandler - macht "Erledigt"
+// rueckgaengig, solange kein neuerer Scan dieselbe URL schon wieder angelegt
+// hat. Kein separates Item-Vorhandensein-Check hier: items.undoMarkDone()
+// gibt ok:false in genau diesem Fall zurueck.
+async function pcUndoDoneHandler({ body, deviceKey }) {
+  if (!body.normalizedUrl) throw badRequest('Keine URL angegeben.');
+  const result = await items.undoMarkDone(deviceKey, body.normalizedUrl);
+  if (!result.ok) throw badRequest('Konnte nicht rückgängig gemacht werden - möglicherweise inzwischen neu eingescannt.');
+  return result;
+}
+
 // "Zurueck aufs Telefon": oeffnet den Tab wieder live UND wechselt den
 // Zustand auf 'keep' - sonst wuerde der naechste "Schliessen"-Durchlauf
 // (state 'pc' hat closesTab:true) ihn sofort wieder zumachen. Item-Pruefung
@@ -377,7 +412,7 @@ async function pcReturnHandler({ body, deviceKey, deviceSerial }) {
 // ist der Anwendungsfall, fuer den dieser Endpunkt gebaut wurde.
 const MAX_BULK_RETURN = 200;
 
-async function pcBulkReturnHandler({ body, res, deviceKey, deviceSerial }) {
+async function pcBulkReturnHandler({ req, body, res, deviceKey, deviceSerial }) {
   const urls = Array.isArray(body.normalizedUrls) ? body.normalizedUrls : [];
   if (!urls.length) throw badRequest('Keine URLs angegeben.');
   if (urls.length > MAX_BULK_RETURN) throw badRequest(`Zu viele Tabs auf einmal (höchstens ${MAX_BULK_RETURN}).`);
@@ -386,12 +421,12 @@ async function pcBulkReturnHandler({ body, res, deviceKey, deviceSerial }) {
   const targets = urls.map((u) => byUrl.get(u)).filter((item) => item?.state === 'pc');
   if (!targets.length) throw badRequest('Keine passenden Items in der PC-Arbeitsliste gefunden.');
 
-  return streamOperation(res, async (write, session) => {
+  return streamOperation(req, res, async (write, session, signal) => {
     write({ phase: 'start', total: targets.length });
     const results = await cdp.openMany(
       session,
       targets.map((t) => t.url),
-      { onProgress: (done, total) => write({ phase: 'progress', done, total }) }
+      { onProgress: (done, total) => write({ phase: 'progress', done, total }), signal }
     );
     const successUrls = targets.filter((_, i) => results[i]?.success).map((t) => t.normalizedUrl);
     if (successUrls.length) {
@@ -410,7 +445,9 @@ async function noteHandler({ body, deviceKey }) {
 
 async function searchHandler({ url }) {
   const includeDropped = url.searchParams.get('includeDropped') === '1';
-  const results = await items.searchArchive(url.searchParams.get('q'), { includeDropped });
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), 200);
+  const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
+  const results = await items.searchArchive(url.searchParams.get('q'), { includeDropped, limit, offset });
   return { results };
 }
 
@@ -421,8 +458,8 @@ async function snoozeHandler({ body, deviceKey }) {
   return result;
 }
 
-async function restoreHandler({ res, deviceKey, deviceSerial }) {
-  return streamOperation(res, async (write, session) => {
+async function restoreHandler({ req, res, deviceKey, deviceSerial }) {
+  return streamOperation(req, res, async (write, session, signal) => {
     const keepers = (await items.getItems(deviceKey)).filter((item) => item.state === 'keep');
     const before = await cdp.listTabs(session);
     const backupFile = await store.saveBackup(`pre_restore_${Date.now()}`, before);
@@ -438,14 +475,14 @@ async function restoreHandler({ res, deviceKey, deviceSerial }) {
     const results = await cdp.openMany(
       session,
       toOpen.map((k) => k.url),
-      { onProgress: (done, total) => write({ phase: 'progress', done, total }) }
+      { onProgress: (done, total) => write({ phase: 'progress', done, total }), signal }
     );
     write({ phase: 'done', total: toOpen.length, results });
   }, deviceSerial);
 }
 
-async function closeDecidedHandler({ res, deviceKey, deviceSerial }) {
-  return streamOperation(res, async (write, session) => {
+async function closeDecidedHandler({ req, res, deviceKey, deviceSerial }) {
+  return streamOperation(req, res, async (write, session, signal) => {
     const inventory = await items.getItems(deviceKey);
     // Ueber BY_ID.closesTab statt fest verdrahteter Strings - ein weiterer
     // Zustand mit closesTab:true landet automatisch hier, ohne diese Datei
@@ -476,6 +513,7 @@ async function closeDecidedHandler({ res, deviceKey, deviceSerial }) {
     write({ phase: 'start', total: allIds.length, backupFile });
     const results = await cdp.closeMany(session, allIds, {
       onProgress: (done, total) => write({ phase: 'progress', done, total }),
+      signal,
     });
     const successById = new Map(results.map((r) => [r.id, r.success]));
     const closedNormalizedUrls = closeTargets
@@ -632,6 +670,7 @@ const routes = {
   'POST /api/bookmark-archive': bookmarkArchiveHandler,
   'POST /api/decisions': decisionsHandler,
   'POST /api/pc/done': pcDoneHandler,
+  'POST /api/pc/undo-done': pcUndoDoneHandler,
   'POST /api/pc/return': pcReturnHandler,
   'POST /api/pc/bulk-return': pcBulkReturnHandler,
   'POST /api/note': noteHandler,

@@ -108,6 +108,7 @@ export const STRINGS = {
     scanBtn: 'Bestand einlesen',
     scanBtnLoading: 'Lese Bestand...',
     filterInputPlaceholder: 'Titel oder URL filtern',
+    crossTrayHintPrefix: 'Auch gefunden in: ',
     sortCountLabel: 'Größte zuerst',
     sortCountTitle: 'Domains mit den meisten Tabs zuerst',
     sortAlphaLabel: 'A–Z',
@@ -126,7 +127,9 @@ export const STRINGS = {
     filterHeadingState: 'Zustand',
     filterHeadingSource: 'Quelle',
     filterResetBtn: 'Alle anzeigen',
+    filterHiddenElsewhereNote: '+{n} weitere Quelle(n) in anderen Ablagen ausgeblendet — „Alle anzeigen" setzt alles zurück.',
     progressLabelInitial: 'Läuft...',
+    progressCancelBtn: 'Abbrechen',
     metaInfoInitial: 'noch nicht eingelesen',
 
     // ---- Ablagen (VIEWS-Beschriftungen) ----
@@ -178,8 +181,10 @@ export const STRINGS = {
 
     // ---- Scan ----
     scanToast: '{count} eindeutige URLs aus {sourceCount} Tabs eingelesen.',
+    scanToastWithNew: '{count} eindeutige URLs aus {sourceCount} Tabs eingelesen, davon {newCount} neu.',
     scanFailedPrefix: 'Einlesen fehlgeschlagen: ',
     metaInfoText: '{n} Tabs · zuletzt eingelesen {date}',
+    doneThisWeek: '{n} diese Woche abgeschlossen',
 
     // ---- Filter / Leerzustaende (gemeinsam) ----
     noFilterMatchTitle: 'Kein Treffer',
@@ -205,6 +210,10 @@ export const STRINGS = {
     // ---- Notiz / Wiedervorlage ----
     notePlaceholder: 'Notiz',
     seenBeforeTitle: 'War schon einmal im Archiv',
+    seenBeforeTitleDetailed: 'Zuletzt {when} {kind}',
+    seenBeforeToday: 'heute',
+    seenBeforeYesterday: 'gestern',
+    seenBeforeDaysAgo: 'vor {n} Tagen',
     snoozeSetTitle: 'Wiedervorlage {date} — zum Ändern klicken',
     snoozeSetBtnTitle: 'Wiedervorlage setzen (Taste W)',
     snoozeDateInputTitle: 'Wiedervorlage: ab diesem Datum wieder anzeigen',
@@ -237,10 +246,15 @@ export const STRINGS = {
     pcEmptyBody: 'Tabs, die du beim Sichten auf „Am PC" setzt, landen hier — sobald sie am Telefon geschlossen wurden.',
     openAllInBrowserBtn: 'Alle {n} im PC-Browser öffnen',
     openAllInBrowserTitle: 'Gegenstück zu „Auf Handy übertragen" - öffnet jeden sichtbaren Link hier am PC in einem neuen Tab',
+    openAllInBrowserConfirm: '{n} Tabs im PC-Browser öffnen?',
+    pcKeyboardHintText: '↑/↓ bewegt den Fokus · D für Erledigt · R für zurück aufs Handy',
+    pcFocusToggleLabel: 'Fokus-Modus ({n} auf einmal)',
+    pcFocusHint: '{shown} von {total} — Rest ist ausgeblendet, kommt automatisch nach.',
     doneBtn: 'Erledigt',
     doneBtnTitle: 'Aus der Liste nehmen und ins Archiv übernehmen',
     returnToPhoneBtn: 'Zurück aufs Telefon',
     reopenedOnPhone: 'Wieder aufs Telefon geöffnet.',
+    pcDoneToast: 'Als erledigt ins Archiv übernommen.',
     bulkDoneTitle: '{n} ausgewählte Einträge als erledigt ins Archiv übernehmen',
     bulkDoneToast: '{n} als erledigt übernommen.',
     bulkReturnTitle: '{n} ausgewählte Tabs wieder aufs Telefon öffnen',
@@ -275,11 +289,12 @@ export const STRINGS = {
 
     // ---- Archiv ----
     archiveSectionSub: 'Alles Archivierte, Verworfene und Erledigte — dauerhaft durchsuchbar.',
-    archiveSearchEmptyTitle: 'Wonach suchst du?',
-    archiveSearchEmptyBody: 'Tippe oben einen Titel oder eine Adresse ein. Das Archiv reicht über alle Geräte und alle bisherigen Durchgänge.',
+    archiveSearchEmptyTitle: 'Noch nichts im Archiv',
+    archiveSearchEmptyBody: 'Erledigte, archivierte und verworfene Tabs landen hier, sobald du sie triagierst.',
     archiveSearchResultsSub: 'Treffer für „{query}"',
     archiveNoResultsBody: 'Zu „{query}" liegt nichts im Archiv. Ein anderer Begriff oder ein Teil der Adresse hilft oft weiter.',
     archiveSearchFailedPrefix: 'Archiv-Suche fehlgeschlagen: ',
+    archiveLoadMoreBtn: 'Mehr laden',
 
     // ---- Hauptliste (Sichten) ----
     inventoryEmptyTitle: 'Noch nichts eingelesen',
@@ -300,6 +315,7 @@ export const STRINGS = {
     archivedExtraText: '{n} zusätzlich im Archiv gesichert',
     nothingToTransfer: 'Nichts zu übertragen.',
     transferFailedPrefix: 'Übertragen fehlgeschlagen: ',
+    operationCancelledToast: 'Abgebrochen. Bereits Erledigtes bleibt gespeichert.',
     backupSavedPrefix: 'Backup gespeichert: ',
 
     // ---- Geraete ----
@@ -397,6 +413,7 @@ export const STRINGS = {
     scanBtn: 'Scan tabs',
     scanBtnLoading: 'Scanning...',
     filterInputPlaceholder: 'Filter by title or URL',
+    crossTrayHintPrefix: 'Also found in: ',
     sortCountLabel: 'Largest first',
     sortCountTitle: 'Domains with the most tabs first',
     sortAlphaLabel: 'A–Z',
@@ -415,7 +432,9 @@ export const STRINGS = {
     filterHeadingState: 'State',
     filterHeadingSource: 'Source',
     filterResetBtn: 'Show all',
+    filterHiddenElsewhereNote: '+{n} more source(s) hidden in other trays — "Show all" resets everything.',
     progressLabelInitial: 'Running...',
+    progressCancelBtn: 'Cancel',
     metaInfoInitial: 'not scanned yet',
 
     viewTriage: 'Triage',
@@ -463,8 +482,10 @@ export const STRINGS = {
     snoozeSaveFailedPrefix: 'Snooze could not be saved: ',
 
     scanToast: '{count} unique URLs read from {sourceCount} tabs.',
+    scanToastWithNew: '{count} unique URLs read from {sourceCount} tabs, {newCount} of them new.',
     scanFailedPrefix: 'Scan failed: ',
     metaInfoText: '{n} tabs · last scanned {date}',
+    doneThisWeek: '{n} done this week',
 
     noFilterMatchTitle: 'No match',
     noFilterMatchBody: 'The filter is currently hiding everything here. "Show all" in the filter sidebar resets it.',
@@ -487,6 +508,10 @@ export const STRINGS = {
 
     notePlaceholder: 'Note',
     seenBeforeTitle: 'Was already in the archive once',
+    seenBeforeTitleDetailed: 'Last {kind} {when}',
+    seenBeforeToday: 'today',
+    seenBeforeYesterday: 'yesterday',
+    seenBeforeDaysAgo: '{n} days ago',
     snoozeSetTitle: 'Snoozed until {date} — click to change',
     snoozeSetBtnTitle: 'Set snooze (key W)',
     snoozeDateInputTitle: 'Snooze: show again from this date',
@@ -518,10 +543,15 @@ export const STRINGS = {
     pcEmptyBody: 'Tabs you set to "On PC" while triaging land here — as soon as they\'ve been closed on the phone.',
     openAllInBrowserBtn: 'Open all {n} in PC browser',
     openAllInBrowserTitle: 'Counterpart to "Transfer to phone" - opens every visible link here on the PC in a new tab',
+    openAllInBrowserConfirm: 'Open {n} tabs in the PC browser?',
+    pcKeyboardHintText: '↑/↓ moves focus · D marks done · R sends back to phone',
+    pcFocusToggleLabel: 'Focus mode ({n} at a time)',
+    pcFocusHint: '{shown} of {total} — the rest is hidden, it moves up automatically.',
     doneBtn: 'Done',
     doneBtnTitle: 'Remove from the list and move to the archive',
     returnToPhoneBtn: 'Back to phone',
     reopenedOnPhone: 'Reopened on the phone.',
+    pcDoneToast: 'Marked as done and archived.',
     bulkDoneTitle: 'Move {n} selected entries to the archive as done',
     bulkDoneToast: '{n} marked as done.',
     bulkReturnTitle: 'Reopen {n} selected tabs on the phone',
@@ -552,11 +582,12 @@ export const STRINGS = {
     transferBtnTitle: 'Closes pending tabs and opens "Phone + PC" tabs still missing there',
 
     archiveSectionSub: 'Everything archived, discarded, and done — permanently searchable.',
-    archiveSearchEmptyTitle: 'What are you looking for?',
-    archiveSearchEmptyBody: 'Type a title or address above. The archive spans every device and every past run.',
+    archiveSearchEmptyTitle: 'Nothing in the archive yet',
+    archiveSearchEmptyBody: 'Done, archived, and dropped tabs land here once you triage them.',
     archiveSearchResultsSub: 'Results for "{query}"',
     archiveNoResultsBody: 'Nothing in the archive for "{query}". A different term or part of the address often helps.',
     archiveSearchFailedPrefix: 'Archive search failed: ',
+    archiveLoadMoreBtn: 'Load more',
 
     inventoryEmptyTitle: 'Nothing scanned yet',
     inventoryEmptyBody: 'Connect the phone via USB and click "Scan tabs". Landed will then pull in every open Chrome tab.',
@@ -575,6 +606,7 @@ export const STRINGS = {
     archivedExtraText: '{n} additionally saved to the archive',
     nothingToTransfer: 'Nothing to transfer.',
     transferFailedPrefix: 'Transfer failed: ',
+    operationCancelledToast: 'Cancelled. Anything already done stays saved.',
     backupSavedPrefix: 'Backup saved: ',
 
     deviceRenamePrompt: 'Name for this device:',

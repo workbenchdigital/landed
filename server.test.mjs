@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from './server.mjs';
 import { withTempData } from './lib/test-helpers.mjs';
-import { mergeScan, appendArchiveRecords, getMeta } from './lib/items.mjs';
+import { mergeScan, appendArchiveRecords, getMeta, setStates, applyCloseResults } from './lib/items.mjs';
 
 // Startet eine Testinstanz auf Port 0 (frei vom OS vergeben) und liefert die
 // Basis-URL. Kein einziger dieser Tests beruehrt echte Hardware (ADB/CDP) -
@@ -71,11 +71,34 @@ test('GET /api/items liefert leeres Array ohne vorherigen Scan', async () => {
   });
 });
 
-test('GET /api/scan-meta liefert null ohne vorherigen Scan', async () => {
+test('GET /api/scan-meta liefert kein sourceCount/timestamp ohne vorherigen Scan, aber recentDoneCount', async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/scan-meta`);
     assert.equal(res.status, 200);
-    assert.equal(await res.json(), null);
+    const body = await res.json();
+    assert.equal(body.sourceCount, undefined);
+    assert.equal(body.timestamp, undefined);
+    assert.equal(body.recentDoneCount, 0);
+  });
+});
+
+test('GET /api/scan-meta zaehlt kuerzliche Archiv-Eintraege in recentDoneCount', async () => {
+  await withServer(async (base) => {
+    await appendArchiveRecords([
+      {
+        normalizedUrl: 'https://erledigt.example/',
+        url: 'https://erledigt.example/',
+        title: 'x',
+        domain: 'erledigt.example',
+        kind: 'done',
+        device: 'default',
+        at: new Date().toISOString(),
+        firstSeen: new Date().toISOString(),
+      },
+    ]);
+    const res = await fetch(`${base}/api/scan-meta`);
+    const body = await res.json();
+    assert.equal(body.recentDoneCount, 1);
   });
 });
 
@@ -180,6 +203,62 @@ test('POST /api/pc/done fuer unbekanntes Item liefert 400', async () => {
       body: JSON.stringify({ normalizedUrl: 'https://nicht-vorhanden.example/' }),
     });
     assert.equal(res.status, 400);
+  });
+});
+
+test('POST /api/pc/undo-done ohne normalizedUrl liefert 400', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/pc/undo-done`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+test('POST /api/pc/undo-done ohne passenden Archiv-Eintrag liefert 400', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/pc/undo-done`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrl: 'https://nie-erledigt.example/' }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
+// Runde-3-Befund #3/#4: "Erledigt" konnte bisher nicht rueckgaengig gemacht
+// werden. Ende-zu-Ende ueber die echten HTTP-Endpunkte: erledigen, dann
+// rueckgaengig machen, Item muss wieder in "Am PC" (state 'pc') stehen.
+test('POST /api/pc/done gefolgt von /api/pc/undo-done stellt das Item wieder her', async () => {
+  await withServer(async (base) => {
+    await mergeScan(undefined, [{ id: '1', url: 'https://pc.example/', title: 'PC-Titel' }]);
+    await setStates(undefined, [['https://pc.example/', 'pc']]);
+    await applyCloseResults(undefined, ['https://pc.example/']);
+
+    const doneRes = await fetch(`${base}/api/pc/done`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrl: 'https://pc.example/' }),
+    });
+    assert.equal(doneRes.status, 200);
+    assert.equal((await (await fetch(`${base}/api/items`)).json()).length, 0);
+
+    const undoRes = await fetch(`${base}/api/pc/undo-done`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrl: 'https://pc.example/' }),
+    });
+    assert.equal(undoRes.status, 200);
+
+    const itemsAfterUndo = await (await fetch(`${base}/api/items`)).json();
+    assert.equal(itemsAfterUndo.length, 1);
+    assert.equal(itemsAfterUndo[0].state, 'pc');
+    assert.equal(itemsAfterUndo[0].title, 'PC-Titel');
+
+    const archiveAfterUndo = await (await fetch(`${base}/api/search?q=pc.example`)).json();
+    assert.deepEqual(archiveAfterUndo.results, [], 'kein Phantom-Archiv-Eintrag nach dem Rueckgaengigmachen');
   });
 });
 
@@ -359,11 +438,78 @@ test('POST /api/note fuer unbekanntes Item liefert 400', async () => {
   });
 });
 
-test('GET /api/search ohne q liefert leere Ergebnisliste', async () => {
+test('GET /api/search ohne q liefert leere Ergebnisliste bei leerem Archiv', async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/search`);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { results: [] });
+  });
+});
+
+// Vorschlag 4 der Produktanalyse: ohne Suchbegriff blaettern statt []
+// zurueckzugeben - vorher war das Archiv nur sichtbar, wenn man den
+// richtigen Begriff erriet.
+test('GET /api/search ohne q blaettert das Archiv chronologisch (neueste zuerst)', async () => {
+  await withServer(async (base) => {
+    await appendArchiveRecords([
+      { normalizedUrl: 'https://alt.example/', url: 'https://alt.example/', title: 'alt', domain: 'alt.example', kind: 'done', device: 'default', at: '2026-01-01T00:00:00.000Z', firstSeen: '2026-01-01T00:00:00.000Z' },
+      { normalizedUrl: 'https://neu.example/', url: 'https://neu.example/', title: 'neu', domain: 'neu.example', kind: 'archived', device: 'default', at: '2026-06-01T00:00:00.000Z', firstSeen: '2026-06-01T00:00:00.000Z' },
+    ]);
+    const res = await fetch(`${base}/api/search`);
+    const { results } = await res.json();
+    assert.equal(results.length, 2);
+    assert.equal(results[0].normalizedUrl, 'https://neu.example/', 'neueste zuerst');
+    assert.equal(results[1].normalizedUrl, 'https://alt.example/');
+  });
+});
+
+test('GET /api/search ohne q respektiert limit/offset', async () => {
+  await withServer(async (base) => {
+    const records = [];
+    for (let i = 0; i < 5; i++) {
+      records.push({
+        normalizedUrl: `https://seite${i}.example/`,
+        url: `https://seite${i}.example/`,
+        title: `s${i}`,
+        domain: `seite${i}.example`,
+        kind: 'done',
+        device: 'default',
+        at: `2026-0${i + 1}-01T00:00:00.000Z`,
+        firstSeen: `2026-0${i + 1}-01T00:00:00.000Z`,
+      });
+    }
+    await appendArchiveRecords(records);
+    const page1 = await (await fetch(`${base}/api/search?limit=2&offset=0`)).json();
+    assert.equal(page1.results.length, 2);
+    assert.equal(page1.results[0].normalizedUrl, 'https://seite4.example/', 'neueste zuerst');
+    const page2 = await (await fetch(`${base}/api/search?limit=2&offset=2`)).json();
+    assert.equal(page2.results.length, 2);
+    assert.notEqual(page2.results[0].normalizedUrl, page1.results[0].normalizedUrl, 'zweite Seite ueberlappt nicht mit der ersten');
+  });
+});
+
+// Ein Suchbegriff schraenkt die Trefferliste selbst schon ein - limit/offset
+// duerfen dort nicht zusaetzlich kappen, sonst waeren Treffer unauffindbar,
+// die durch Zufall hinter der Seitengroesse liegen.
+test('GET /api/search mit q ignoriert limit - Trefferliste bleibt vollstaendig', async () => {
+  await withServer(async (base) => {
+    const records = [];
+    for (let i = 0; i < 3; i++) {
+      records.push({
+        normalizedUrl: `https://treffer${i}.example/`,
+        url: `https://treffer${i}.example/`,
+        title: `Gesuchter Begriff ${i}`,
+        domain: `treffer${i}.example`,
+        kind: 'done',
+        device: 'default',
+        at: new Date().toISOString(),
+        firstSeen: new Date().toISOString(),
+      });
+    }
+    await appendArchiveRecords(records);
+    const res = await fetch(`${base}/api/search?q=Gesuchter&limit=1`);
+    const { results } = await res.json();
+    assert.equal(results.length, 3, 'limit darf eine echte Suche nicht kappen');
   });
 });
 
