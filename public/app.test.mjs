@@ -392,6 +392,26 @@ test('adb/cdp-Aufrufe haben ein Timeout (Befund 6)', () => {
   assert.match(configJs, /adbTimeoutMs: 15_000/, 'adbTimeoutMs fehlt in config.mjs');
 });
 
+// Nutzer-Feedback nach der v0.3.20-Auslieferung: die "verdaechtiger Scan"-
+// Warnung erschien praktisch bei jedem ersten Scan nach einem USB-
+// Neuanstecken, obwohl sich der Zustand Sekunden spaeter von selbst loeste
+// (Chrome auf dem Handy braucht nach dem Reconnect einen Moment). scanHandler
+// braucht eine echte ADB-Session fuer einen vollen Rundlauf-Test (wie die
+// uebrigen Scan-Aenderungen) - hier nur der textuelle Beleg, dass der Retry
+// tatsaechlich verdrahtet ist.
+test('Scan retried einmal still, bevor die "verdaechtig"-Warnung angezeigt wird', () => {
+  const serverJs = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'server.mjs'),
+    'utf8'
+  );
+  const scanHandlerBody = serverJs.match(/async function scanHandler\([\s\S]*?\n\}/)?.[0];
+  assert.ok(scanHandlerBody, 'scanHandler nicht gefunden');
+  assert.match(scanHandlerBody, /if \(result\.suspicious\) \{/, 'kein Retry-Zweig fuer einen verdaechtigen Scan');
+  assert.match(scanHandlerBody, /await cdp\.sleep\(1500\);/, 'Retry wartet nicht vor dem zweiten Versuch');
+  assert.match(scanHandlerBody, /const retryTabs = await cdp\.listTabs\(session\);/, 'Retry liest keine frischen Tabs');
+  assert.match(scanHandlerBody, /result = await items\.mergeScan\(deviceKey, retryTabs\);/, 'Retry-Ergebnis wird nicht uebernommen');
+});
+
 test('cdp.openMany/closeMany und streamOperation pruefen signal/Verbindungsstatus', () => {
   const cdpJs = readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'cdp.mjs'),

@@ -189,7 +189,23 @@ async function streamOperation(req, res, fn, deviceSerial) {
 async function scanHandler({ deviceKey, deviceSerial }) {
   return withAdbSession(async (session) => {
     const tabs = await cdp.listTabs(session);
-    const result = await items.mergeScan(deviceKey, tabs);
+    let result = await items.mergeScan(deviceKey, tabs);
+
+    // Nutzer-Feedback nach der v0.3.20-Auslieferung: nach einem USB-
+    // Neuanstecken meldete praktisch jeder erste Scan "verdaechtig" - Chrome
+    // auf dem Handy braucht nach dem Reconnect oft einen Moment, um wieder
+    // alle Tabs ueber CDP zu melden, obwohl sich das Sekunden spaeter von
+    // selbst loest. Ein einzelner automatischer Retry (gleiches 1,5s-
+    // Wartemuster wie cdp.listTabs() beim ersten Chrome-Start) deckt den
+    // Normalfall lautlos ab, bevor der Nutzer ueberhaupt eine Warnung sieht.
+    // mergeScan() aendert die Baseline bei einem verdaechtigen Scan bewusst
+    // NICHT (siehe dort) - der Retry vergleicht also weiterhin gegen
+    // denselben, korrekten Ausgangswert, nicht gegen den kleinen Zwischenstand.
+    if (result.suspicious) {
+      await cdp.sleep(1500);
+      const retryTabs = await cdp.listTabs(session);
+      result = await items.mergeScan(deviceKey, retryTabs);
+    }
 
     if (result.aborted) {
       return {
