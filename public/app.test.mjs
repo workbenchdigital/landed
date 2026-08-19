@@ -180,7 +180,7 @@ test('runStep() wirft bei phase:"error" statt nur zu toasten und normal zurueckz
 test('openExternal() teilt in Chargen auf statt alles in einer Anfrage zu senden', () => {
   assert.match(appJs, /const OPEN_EXTERNAL_BATCH_SIZE = 50/, 'Chargengroesse fehlt');
   assert.match(appJs, /for \(let i = 0; i < urls\.length; i \+= OPEN_EXTERNAL_BATCH_SIZE\)/, 'openExternal() sendet nicht in Chargen');
-  assert.match(appJs, /if \(!confirm\(t\('openAllInBrowserConfirm', \{ n: items\.length \}\)\)\) return;/, 'openAllInBrowser() fragt nicht mehr nach vor dem Oeffnen vieler Tabs');
+  assert.match(appJs, /if \(!\(await showConfirmDialog\(t\('openAllInBrowserConfirm', \{ n: items\.length \}\)\)\)\) return;/, 'openAllInBrowser() fragt nicht mehr nach vor dem Oeffnen vieler Tabs');
 
   const i18n = readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
@@ -410,6 +410,108 @@ test('Scan retried einmal still, bevor die "verdaechtig"-Warnung angezeigt wird'
   assert.match(scanHandlerBody, /await cdp\.sleep\(1500\);/, 'Retry wartet nicht vor dem zweiten Versuch');
   assert.match(scanHandlerBody, /const retryTabs = await cdp\.listTabs\(session\);/, 'Retry liest keine frischen Tabs');
   assert.match(scanHandlerBody, /result = await items\.mergeScan\(deviceKey, retryTabs\);/, 'Retry-Ergebnis wird nicht uebernommen');
+});
+
+// Politur-Runde (Befunde 11/15/18/19/20-23), auf Nutzerwunsch nachgezogen.
+// Vor jedem Punkt wieder auf "bewusst"/"siehe Plan"-Kommentare geprueft -
+// hier keine gefunden.
+
+test('Befund 20: Sammel-Rueckgabe prueft das Limit VOR dem Bestaetigungsdialog', () => {
+  const fn = appJs.match(/async function bulkPcReturn\(items\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'bulkPcReturn nicht gefunden');
+  const limitCheckIdx = fn.indexOf('items.length > MAX_BULK_RETURN');
+  const confirmIdx = fn.indexOf('showConfirmDialog');
+  assert.ok(limitCheckIdx > -1 && limitCheckIdx < confirmIdx, 'Limit-Pruefung muss vor dem Bestaetigungsdialog stehen');
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  const count = (i18n.match(/bulkReturnTooManyToast:/g) || []).length;
+  assert.equal(count, 2, `bulkReturnTooManyToast muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+});
+
+test('Befund 21: Bestandsalter zeigt einen relativen Zusatz ab einem Tag Abstand', () => {
+  assert.match(appJs, /daysSince\(timestamp\) > 0\s*\n\s*\? t\('metaInfoTextWithAge'/, 'formatMetaInfo() zeigt kein relatives Alter');
+});
+
+test('Befund 22: lang-Attribut und aria-labels wechseln mit der Sprache', () => {
+  const i18nJs = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  assert.match(i18nJs, /document\.documentElement\.lang = getLang\(\);/, 'applyStaticTranslations() setzt das lang-Attribut nicht');
+  assert.match(i18nJs, /data-i18n-aria-label/, 'applyStaticTranslations() wertet data-i18n-aria-label nicht aus');
+
+  const indexHtml = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),
+    'utf8'
+  );
+  const ariaCount = (indexHtml.match(/data-i18n-aria-label=/g) || []).length;
+  assert.equal(ariaCount, 5, `5 hartcodierte aria-labels sollten uebersetzt werden, gefunden: ${ariaCount}`);
+});
+
+test('Befund 23: confirm()/prompt() sind durch einen eigenen Dialog ersetzt', () => {
+  assert.doesNotMatch(appJs, /[^.]\bconfirm\(t\(/, 'native confirm() darf nicht mehr direkt aufgerufen werden');
+  assert.doesNotMatch(appJs, /\bprompt\(t\(/, 'native prompt() darf nicht mehr direkt aufgerufen werden');
+  assert.match(appJs, /function showConfirmDialog\(message, \{ withInput = false, defaultValue = '' \} = \{\}\)/, 'showConfirmDialog() fehlt');
+
+  const indexHtml = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),
+    'utf8'
+  );
+  assert.match(indexHtml, /id="confirmDialog"/, 'Dialog-Markup fehlt in index.html');
+});
+
+test('Codemouse-Fund PR #65: Enter im confirmDialog bestaetigt statt abzubrechen', () => {
+  const indexHtml = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),
+    'utf8'
+  );
+  const dialogBlock = indexHtml.match(/<dialog id="confirmDialog"[\s\S]*?<\/dialog>/)?.[0];
+  assert.ok(dialogBlock, 'confirmDialog-Markup nicht gefunden');
+  const submitButtons = dialogBlock.match(/<button type="submit"/g) || [];
+  assert.equal(submitButtons.length, 1, 'genau ein type="submit"-Button erlaubt, sonst waehlt der Browser bei Enter den ersten im DOM (Abbrechen statt OK)');
+  assert.match(dialogBlock, /<button type="submit" value="ok"/, 'OK muss der einzige Submit-Button sein');
+  assert.match(dialogBlock, /<button type="button"[^>]*id="confirmDialogCancelBtn"/, 'Abbrechen muss type="button" sein, nicht submit');
+  assert.match(appJs, /confirmDialogCancelBtn['"]\)\.addEventListener\('click', \(\) => confirmDialogEl\.close\('cancel'\)\)/, 'Abbrechen-Klick muss explizit close(\'cancel\') aufrufen');
+});
+
+test('Befund 19: "alles auswaehlen" fuer die ganze sichtbare Liste ist verdrahtet', () => {
+  assert.match(appJs, /function makeSelectAllCheckbox\(keys\)/, 'makeSelectAllCheckbox fehlt');
+  const wireCount = (appJs.match(/makeSelectAllCheckbox\(/g) || []).length;
+  assert.equal(wireCount, 3, 'makeSelectAllCheckbox muss definiert UND in Sichten UND in "Am PC" aufgerufen werden, gefunden: ' + wireCount);
+});
+
+test('Befund 18: Wiedervorlage hat jetzt ein Tastaturkuerzel (S) und einen Hinweis', () => {
+  const snoozedBlock = appJs.match(/if \(activeView === 'snoozed' && focusedKey\) \{[\s\S]*?\n {2}\}/)?.[0];
+  assert.ok(snoozedBlock, 'Tastatur-Block fuer Wiedervorlage nicht gefunden');
+  assert.match(snoozedBlock, /key === 's'.*setSnooze\(item, null\)/, 'S-Kuerzel ruft setSnooze(item, null) nicht auf');
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  const count = (i18n.match(/snoozedKeyboardHintText:/g) || []).length;
+  assert.equal(count, 2, `snoozedKeyboardHintText muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+});
+
+test('Befund 15: Leerzustaende in Nebenablagen unterscheiden Text- von Zustandsfilter', () => {
+  const fn = appJs.match(/function renderNoFilterMatch\(container\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'renderNoFilterMatch nicht gefunden');
+  assert.match(fn, /noMatchFilterTextBody/, 'unterscheidet nicht nach Textfilter');
+  assert.match(fn, /noMatchFilterStateBody/, 'unterscheidet nicht nach Zustandsfilter');
+});
+
+test('Befund 11: Verbindungsstatus ist ablagenuebergreifend sichtbar', () => {
+  assert.match(appJs, /function renderConnectionStatus\(/, 'renderConnectionStatus fehlt');
+  assert.match(appJs, /^refreshPendingHealth\(\);/m, 'kein einmaliger Check beim Laden');
+
+  const indexHtml = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),
+    'utf8'
+  );
+  assert.match(indexHtml, /id="connectionStatus"/, 'Header-Indikator fehlt in index.html');
 });
 
 test('cdp.openMany/closeMany und streamOperation pruefen signal/Verbindungsstatus', () => {

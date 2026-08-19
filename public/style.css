@@ -334,6 +334,14 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   align-items: center;
   gap: 0.35rem;
 }
+/* Runde-3-Befund #11: Verbindungsstatus jetzt im Header, ablagenuebergreifend. */
+.connection-status {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-right: 0.3rem;
+  white-space: nowrap;
+}
+.connection-status.urgent { color: var(--drop-text); }
 
 .theme-switch,
 .lang-switch {
@@ -1046,6 +1054,19 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 }
 .pc-focus-toggle input { accent-color: var(--signal); width: 1rem; height: 1rem; }
 
+/* Runde-3-Befund #19: "alles auswaehlen" fuer die ganze sichtbare Liste,
+   nicht nur je Domain-Gruppe. */
+.select-all-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.select-all-toggle input { accent-color: var(--signal); width: 1rem; height: 1rem; }
+
 .filter-check {
   display: flex;
   align-items: center;
@@ -1310,6 +1331,46 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 }
 .wizard::backdrop { background: rgba(16, 18, 22, 0.55); }
 .wizard-body { padding: 1.4rem 1.5rem 1rem; }
+
+/* ---- Bestaetigungsdialog (Runde-3-Befund #23) ---- */
+
+.confirm-dialog {
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  color: var(--ink);
+  width: min(380px, 92vw);
+  box-shadow: var(--shadow-float);
+}
+.confirm-dialog::backdrop { background: rgba(16, 18, 22, 0.55); }
+.confirm-dialog form { padding: 1.2rem 1.3rem 1.1rem; }
+.confirm-dialog-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.confirm-dialog-brand .brand-mark { width: 0.9rem; height: 0.9rem; }
+#confirmDialogMessage { margin: 0 0 0.9rem; line-height: 1.5; font-size: 0.92rem; }
+#confirmDialogInput {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.9rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--sunken);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
 .wizard-body h2 {
   margin: 0 0 0.6rem;
   font-size: 1.15rem;

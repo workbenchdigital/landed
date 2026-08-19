@@ -121,6 +121,10 @@ const progressLabel = document.getElementById('progressLabel');
 const progressCount = document.getElementById('progressCount');
 const progressFill = document.getElementById('progressFill');
 const progressCancelBtn = document.getElementById('progressCancelBtn');
+const confirmDialogEl = document.getElementById('confirmDialog');
+const confirmDialogMessageEl = document.getElementById('confirmDialogMessage');
+const confirmDialogInputEl = document.getElementById('confirmDialogInput');
+const connectionStatusEl = document.getElementById('connectionStatus');
 const keyboardHint = document.getElementById('keyboardHint');
 const archiveResultsEl = document.getElementById('archiveResults');
 const deviceSwitchEl = document.getElementById('deviceSwitch');
@@ -174,6 +178,39 @@ function toast(message, { error = false, sticky = false, actionLabel = null, onA
   // erst realisieren, dass die Bulk-Aktion daneben ging, bevor man reagieren kann.
   if (!stays) setTimeout(() => el.remove(), actionLabel ? 8000 : 4200);
 }
+
+// Runde-3-Befund #23: native confirm()/prompt() zeigen im --app-Fenster
+// (keine Adressleiste) nur eine generische Systemzeile ohne Kontext, wer da
+// fragt. Ersetzt beide durch denselben <dialog> mit Landed-Branding.
+// method="dialog" + button-value tragen die Antwort automatisch ins
+// dialog.returnValue - Esc/Backdrop-Klick zaehlen dadurch von selbst als
+// Abbrechen (leeres returnValue), kein Sonderfall noetig.
+function showConfirmDialog(message, { withInput = false, defaultValue = '' } = {}) {
+  confirmDialogMessageEl.textContent = message;
+  confirmDialogInputEl.hidden = !withInput;
+  confirmDialogInputEl.value = defaultValue;
+  return new Promise((resolve) => {
+    confirmDialogEl.addEventListener(
+      'close',
+      () => {
+        const ok = confirmDialogEl.returnValue === 'ok';
+        resolve(withInput ? (ok ? confirmDialogInputEl.value : null) : ok);
+      },
+      { once: true }
+    );
+    confirmDialogEl.showModal();
+    if (withInput) {
+      confirmDialogInputEl.focus();
+      confirmDialogInputEl.select();
+    }
+  });
+}
+// Cancel ist bewusst kein type="submit": bei zwei Submit-Buttons waehlt der
+// Browser bei impliziter Formular-Uebermittlung (Enter im Textfeld) den
+// ERSTEN im DOM als Default - das waere hier Abbrechen statt OK. Ein
+// einzelner Submit-Button (OK) plus expliziter close() fuer Abbrechen
+// haelt Enter beim erwarteten Bestaetigen.
+document.getElementById('confirmDialogCancelBtn').addEventListener('click', () => confirmDialogEl.close('cancel'));
 
 // fetch() wirft bei einem Netzwerk-/Verbindungsfehler (Server nicht
 // erreichbar, abgestuerzt, Rechner im Schlaf) ein TypeError mit dem kryptischen
@@ -229,8 +266,15 @@ function setProgress(active, { label, done = 0, total = 0, onCancel } = {}) {
   progressCancelBtn.onclick = onCancel || null;
 }
 
+// Runde-3-Befund #21: der Zeitstempel war rein absolut ("19.8.2026,
+// 10:53") - ob der Bestand von eben oder von vor einer Woche ist, musste
+// man selbst nachrechnen. Relativer Zusatz nur ab einem Tag Abstand
+// (formatAgoHint liefert fuer "heute" ohnehin nichts Zusaetzliches).
 function formatMetaInfo(sourceCount, timestamp) {
-  return t('metaInfoText', { n: sourceCount, date: new Date(timestamp).toLocaleString(dateLocale()) });
+  const date = new Date(timestamp).toLocaleString(dateLocale());
+  return daysSince(timestamp) > 0
+    ? t('metaInfoTextWithAge', { n: sourceCount, date, age: formatAgoHint(timestamp) })
+    : t('metaInfoText', { n: sourceCount, date });
 }
 
 async function loadInventory() {
@@ -394,6 +438,27 @@ function isSafeFaviconDomain(domain) {
 // dupliziert, sondern hier optional zugeschaltet - vermeidet eine zweite
 // Auswahl-Implementierung fuer denselben Zweck. Nur "Am PC" nutzt das
 // bisher; missing/archive rufen weiterhin ohne Optionen auf, unveraendert.
+// Runde-3-Befund #19: Mehrfachauswahl gab es bisher nur PRO Domain-Gruppe,
+// kein "alles auswaehlen" fuer die ganze sichtbare Liste - bei vielen
+// kleinen Gruppen (106 von 132 Domains im echten Bestand haben nur einen
+// Tab) waere das viele Einzelklicks fuer eine Sammelaktion ueber mehrere
+// Domains hinweg gewesen. Gleiches Dreizustands-Muster wie die
+// Gruppen-Checkbox in renderDomainGroup, nur ueber ALLE uebergebenen Keys.
+function makeSelectAllCheckbox(keys) {
+  const selectedCount = keys.filter((k) => selectedKeys.has(k)).length;
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'select-all-visible';
+  cb.title = t('selectAllVisibleTitle');
+  cb.checked = selectedCount > 0 && selectedCount === keys.length;
+  cb.indeterminate = selectedCount > 0 && selectedCount < keys.length;
+  cb.addEventListener('change', () => {
+    for (const k of keys) (cb.checked ? selectedKeys.add(k) : selectedKeys.delete(k));
+    render();
+  });
+  return cb;
+}
+
 function renderDomainGroup(container, domain, items, { selectable = false } = {}) {
   const group = document.createElement('div');
   group.className = 'domain-group' + (collapsedDomains.has(domain) ? ' collapsed' : '');
@@ -449,8 +514,13 @@ function renderDomainGroup(container, domain, items, { selectable = false } = {}
 
 // Filter matched nichts (Tray selbst hat Eintraege, aber Text-/Zustands-/
 // Domainfilter blendet gerade alles aus) - dieselbe Botschaft wie in Sichten.
+// Runde-3-Befund #15: dieser Leerzustand nannte in allen Nebenablagen (Am
+// PC/Wiedervorlage/Verschwunden/Vorgemerkt) denselben generischen Text,
+// unabhaengig davon, WAS gerade filtert - Sichten unterschied das schon
+// (siehe render() weiter unten), hier fehlte dieselbe Unterscheidung nur.
 function renderNoFilterMatch(container) {
-  renderEmptyState(container, t('noFilterMatchTitle'), t('noFilterMatchBody'));
+  const body = filterText.trim() ? t('noMatchFilterTextBody', { filterText }) : t('noMatchFilterStateBody');
+  renderEmptyState(container, t('noFilterMatchTitle'), body);
 }
 
 // Ein pc-Item, das schon geschlossen wurde (closedAt gesetzt), lebt nur noch
@@ -651,8 +721,8 @@ async function openExternal(urls) {
 // wo per Definition kein Handy-Tab mehr existiert. Fragt nach wie
 // bulkPcReturn - auf einen Schlag mehrere Dutzend Browserfenster oeffnen ist
 // genauso eine folgenreiche Aktion wie mehrere Tabs am Telefon zu oeffnen.
-function openAllInBrowser(items) {
-  if (!confirm(t('openAllInBrowserConfirm', { n: items.length }))) return;
+async function openAllInBrowser(items) {
+  if (!(await showConfirmDialog(t('openAllInBrowserConfirm', { n: items.length })))) return;
   openExternal(items.map((item) => item.url));
 }
 
@@ -764,9 +834,20 @@ async function bulkSetSnooze(items, value) {
 // sich gegenseitig um dieselbe Session streiten. Der Server buendelt die
 // ganze Auswahl in EINE Session (cdp.openMany), gleiches Muster wie
 // restoreHandler fuer "Auf Handy uebertragen".
+// Runde-3-Befund #20: der Server lehnte mehr als MAX_BULK_RETURN Tabs erst
+// NACH dem Bestaetigungsdialog ab (server.mjs) - "127 Tabs wieder aufs
+// Telefon oeffnen?" bestaetigt, und erst danach ein Fehler-Toast mit der
+// eigentlichen Grenze. Gleicher Wert wie server.mjs MAX_BULK_RETURN, gleiches
+// Duplizierungsmuster wie OPEN_EXTERNAL_BATCH_SIZE (Runde-3-Befund #2).
+const MAX_BULK_RETURN = 200;
+
 async function bulkPcReturn(items) {
   if (!items.length) return;
-  if (!confirm(t('bulkReturnConfirm', { n: items.length }))) return;
+  if (items.length > MAX_BULK_RETURN) {
+    toast(t('bulkReturnTooManyToast', { n: items.length, max: MAX_BULK_RETURN }), { error: true });
+    return;
+  }
+  if (!(await showConfirmDialog(t('bulkReturnConfirm', { n: items.length })))) return;
   const controller = new AbortController();
   setProgress(true, { label: t('openingTabsLabel'), done: 0, total: 0, onCancel: () => controller.abort() });
   try {
@@ -1714,6 +1795,12 @@ function renderPcView(items) {
     pcSectionEl.appendChild(focusHint);
   }
 
+  const selectAllToggle = document.createElement('label');
+  selectAllToggle.className = 'select-all-toggle';
+  selectAllToggle.appendChild(makeSelectAllCheckbox(shown.map((i) => i.normalizedUrl)));
+  selectAllToggle.append(t('selectAllVisibleLabel'));
+  pcSectionEl.appendChild(selectAllToggle);
+
   const openAllBtn = document.createElement('button');
   openAllBtn.className = 'ghost-btn';
   openAllBtn.textContent = t('openAllInBrowserBtn', { n: shown.length });
@@ -1810,6 +1897,13 @@ function renderSnoozedView(items) {
   const shown = visibleItems(items);
   renderSectionHead(snoozedSectionEl, t('viewSnoozed'), shown.length, t('snoozedSectionSub'));
   if (!shown.length) return renderNoFilterMatch(snoozedSectionEl);
+
+  // Runde-3-Befund #18: einzige Ablage mit Pfeiltasten-Navigation, aber
+  // ohne jede Aktionstaste UND ohne Hinweis darauf.
+  const hint = document.createElement('p');
+  hint.className = 'hint';
+  hint.textContent = t('snoozedKeyboardHintText');
+  snoozedSectionEl.appendChild(hint);
 
   const todayYmd = localYmd();
   const sorted = [...shown].sort((a, b) => a.snoozeUntil.localeCompare(b.snoozeUntil));
@@ -1921,21 +2015,34 @@ function updateTransferBtnState() {
   btn.disabled = !pendingConnected || !pendingTransferPossible;
 }
 
+// Runde-3-Befund #11: der Verbindungsstatus war bisher nur sichtbar, wenn
+// man zufaellig in "Vorgemerkt" war (der einzigen Ablage, die
+// pendingHealthStatus rendert) - der frueh-Ausstieg oben liess die Pruefung
+// sonst komplett ins Leere laufen. Aktualisiert jetzt zusaetzlich einen
+// persistenten Indikator im Header (#connectionStatus), sichtbar in JEDER
+// Ablage - ohne zusaetzliches Dauer-Polling: nur der zuletzt bekannte Stand,
+// aktualisiert bei jeder ohnehin schon stattfindenden Pruefung.
+function renderConnectionStatus(label, { urgent = false } = {}) {
+  connectionStatusEl.hidden = false;
+  connectionStatusEl.textContent = label;
+  connectionStatusEl.classList.toggle('urgent', urgent);
+  const pendingStatusEl = document.getElementById('pendingHealthStatus');
+  if (pendingStatusEl) {
+    pendingStatusEl.textContent = label;
+    pendingStatusEl.classList.toggle('urgent', urgent);
+  }
+}
+
 async function refreshPendingHealth() {
-  const statusEl = document.getElementById('pendingHealthStatus');
-  if (!statusEl) return;
-  statusEl.textContent = t('checkingConnection');
-  statusEl.classList.remove('urgent');
+  renderConnectionStatus(t('checkingConnection'));
   try {
     const res = await fetch('/api/health', { method: 'POST' });
     const health = await res.json();
     pendingConnected = Boolean(health.device && health.chrome?.ok);
-    statusEl.textContent = pendingConnected ? t('phoneConnected') : t('phoneNotConnected');
-    statusEl.classList.toggle('urgent', !pendingConnected);
+    renderConnectionStatus(pendingConnected ? t('phoneConnected') : t('phoneNotConnected'), { urgent: !pendingConnected });
   } catch {
     pendingConnected = false;
-    statusEl.textContent = t('connectionStatusUnknown');
-    statusEl.classList.add('urgent');
+    renderConnectionStatus(t('connectionStatusUnknown'), { urgent: true });
   }
   updateTransferBtnState();
 }
@@ -2368,6 +2475,11 @@ function render() {
 
   keyboardHint.textContent = t('keyboardHintText');
 
+  const selectAllToggle = document.createElement('label');
+  selectAllToggle.className = 'select-all-toggle';
+  selectAllToggle.appendChild(makeSelectAllCheckbox(filtered.map((i) => i.normalizedUrl)));
+  selectAllToggle.append(t('selectAllVisibleLabel'));
+  appEl.appendChild(selectAllToggle);
 
   groups.forEach(([domain, items], groupIndex) => {
     const group = document.createElement('div');
@@ -2521,6 +2633,13 @@ document.addEventListener('keydown', (e) => {
     if (item && key === 'd') { e.preventDefault(); pcDone(item); return; }
     if (item && key === 'r') { e.preventDefault(); pcReturn(item); return; }
   }
+  // Runde-3-Befund #18: Tastaturbedienung deckte nur "Sichten"/"Verschwunden"
+  // (B/P/A/V) und "Am PC" (D/R) ab - "Wiedervorlage" hatte trotz
+  // funktionierender Pfeiltasten-Navigation keine einzige Aktionstaste.
+  if (activeView === 'snoozed' && focusedKey) {
+    const item = inventory.find((i) => i.normalizedUrl === focusedKey);
+    if (item && key === 's') { e.preventDefault(); setSnooze(item, null); return; }
+  }
   if (key === 'w' && focusedKey) {
     const slot = document.querySelector(`.tab-row[data-key="${CSS.escape(focusedKey)}"] .snooze-slot`);
     if (slot) {
@@ -2613,7 +2732,7 @@ async function runStep(url, label, body, { signal, onCancel } = {}) {
 // Faellige auf einmal statt zweimal fragen zu muessen.
 async function runTransfer() {
   const btn = document.getElementById('transferBtn');
-  if (!confirm(t('transferConfirm'))) return;
+  if (!(await showConfirmDialog(t('transferConfirm')))) return;
   btn.disabled = true;
   // Runde-3-Befund #5: EIN Controller fuer beide Schritte (schliessen UND
   // oeffnen) - der Abbrechen-Knopf soll den ganzen "Uebertragen"-Vorgang
@@ -2707,7 +2826,7 @@ document.querySelectorAll('#sortModeSwitch button').forEach((btn) => {
 
 document.getElementById('setupBtn').addEventListener('click', () => openWizard(0));
 document.getElementById('quitBtn').addEventListener('click', async () => {
-  if (!confirm(t('quitConfirm'))) return;
+  if (!(await showConfirmDialog(t('quitConfirm')))) return;
   try {
     await fetch('/api/shutdown', { method: 'POST' });
   } catch {
@@ -2768,7 +2887,7 @@ deviceSwitchEl.addEventListener('change', async () => {
 deviceRenameBtn.addEventListener('click', async () => {
   const serial = deviceSwitchEl.value;
   const current = devicesCache.find((d) => d.serial === serial);
-  const label = prompt(t('deviceRenamePrompt'), current?.label || '');
+  const label = await showConfirmDialog(t('deviceRenamePrompt'), { withInput: true, defaultValue: current?.label || '' });
   if (label === null) return; // Dialog abgebrochen
   try {
     const res = await fetch('/api/devices/label', {
@@ -2828,3 +2947,7 @@ loadInventory().then(checkDueSnoozeBanner);
 loadDevices();
 maybeAutoOpenWizard();
 scheduleMidnightRerender();
+// Runde-3-Befund #11: einmalige Pruefung beim Laden, damit der
+// Verbindungsstatus im Header auch dann einen Wert hat, wenn "Vorgemerkt"
+// in dieser Sitzung nie besucht wird.
+refreshPendingHealth();

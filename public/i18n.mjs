@@ -184,12 +184,21 @@ export const STRINGS = {
     scanToastWithNew: '{count} eindeutige URLs aus {sourceCount} Tabs eingelesen, davon {newCount} neu.',
     scanFailedPrefix: 'Einlesen fehlgeschlagen: ',
     metaInfoText: '{n} Tabs · zuletzt eingelesen {date}',
+    metaInfoTextWithAge: '{n} Tabs · zuletzt eingelesen {date} ({age})',
+    ariaLabelTheme: 'Farbschema',
+    ariaLabelInventoryStatus: 'Stand des Bestands',
+    ariaLabelTrays: 'Ablagen',
+    ariaLabelDomainSort: 'Domain-Sortierung',
+    ariaLabelFilterSidebar: 'Nach Zustand oder Quelle filtern',
+    confirmDialogCancel: 'Abbrechen',
+    confirmDialogOk: 'OK',
     doneThisWeek: '{n} diese Woche abgeschlossen',
 
     // ---- Filter / Leerzustaende (gemeinsam) ----
     noFilterMatchTitle: 'Kein Treffer',
-    noFilterMatchBody: 'Filter blendet gerade alles hier aus. „Alle anzeigen" in der Filter-Seitenleiste setzt ihn zurück.',
     selectGroupTitle: 'Alle in dieser Gruppe auswählen',
+    selectAllVisibleTitle: 'Alle sichtbaren Einträge auswählen',
+    selectAllVisibleLabel: 'Alle sichtbaren auswählen',
 
     // ---- Mehrfachauswahl-Leiste ----
     selectedCount: '{n} ausgewählt',
@@ -248,6 +257,7 @@ export const STRINGS = {
     openAllInBrowserTitle: 'Gegenstück zu „Auf Handy übertragen" - öffnet jeden sichtbaren Link hier am PC in einem neuen Tab',
     openAllInBrowserConfirm: '{n} Tabs im PC-Browser öffnen?',
     pcKeyboardHintText: '↑/↓ bewegt den Fokus · D für Erledigt · R für zurück aufs Handy',
+    snoozedKeyboardHintText: '↑/↓ bewegt den Fokus · S für Jetzt anzeigen',
     pcFocusToggleLabel: 'Fokus-Modus ({n} auf einmal)',
     pcFocusHint: '{shown} von {total} — Rest ist ausgeblendet, kommt automatisch nach.',
     doneBtn: 'Erledigt',
@@ -259,6 +269,7 @@ export const STRINGS = {
     bulkDoneToast: '{n} als erledigt übernommen.',
     bulkReturnTitle: '{n} ausgewählte Tabs wieder aufs Telefon öffnen',
     bulkReturnConfirm: '{n} Tabs wieder aufs Telefon öffnen?',
+    bulkReturnTooManyToast: '{n} Tabs sind zu viele auf einmal (höchstens {max}). Auswahl verkleinern und erneut versuchen.',
     bulkReturnedToast: '{n} wieder aufs Telefon geöffnet.',
     bulkSnoozeTitle: 'Wiedervorlage für {n} ausgewählte Einträge setzen',
     bulkSnoozeToast: 'Wiedervorlage für {n} Einträge gesetzt.',
@@ -485,11 +496,20 @@ export const STRINGS = {
     scanToastWithNew: '{count} unique URLs read from {sourceCount} tabs, {newCount} of them new.',
     scanFailedPrefix: 'Scan failed: ',
     metaInfoText: '{n} tabs · last scanned {date}',
+    metaInfoTextWithAge: '{n} tabs · last scanned {date} ({age})',
+    ariaLabelTheme: 'Color scheme',
+    ariaLabelInventoryStatus: 'Inventory status',
+    ariaLabelTrays: 'Trays',
+    ariaLabelDomainSort: 'Domain sorting',
+    ariaLabelFilterSidebar: 'Filter by state or source',
+    confirmDialogCancel: 'Cancel',
+    confirmDialogOk: 'OK',
     doneThisWeek: '{n} done this week',
 
     noFilterMatchTitle: 'No match',
-    noFilterMatchBody: 'The filter is currently hiding everything here. "Show all" in the filter sidebar resets it.',
     selectGroupTitle: 'Select everything in this group',
+    selectAllVisibleTitle: 'Select all visible entries',
+    selectAllVisibleLabel: 'Select all visible',
 
     selectedCount: '{n} selected',
     copyBtn: 'Copy',
@@ -545,6 +565,7 @@ export const STRINGS = {
     openAllInBrowserTitle: 'Counterpart to "Transfer to phone" - opens every visible link here on the PC in a new tab',
     openAllInBrowserConfirm: 'Open {n} tabs in the PC browser?',
     pcKeyboardHintText: '↑/↓ moves focus · D marks done · R sends back to phone',
+    snoozedKeyboardHintText: '↑/↓ moves focus · S shows it now',
     pcFocusToggleLabel: 'Focus mode ({n} at a time)',
     pcFocusHint: '{shown} of {total} — the rest is hidden, it moves up automatically.',
     doneBtn: 'Done',
@@ -556,6 +577,7 @@ export const STRINGS = {
     bulkDoneToast: '{n} marked as done.',
     bulkReturnTitle: 'Reopen {n} selected tabs on the phone',
     bulkReturnConfirm: 'Reopen {n} tabs on the phone?',
+    bulkReturnTooManyToast: '{n} tabs is too many at once (max {max}). Shrink the selection and try again.',
     bulkReturnedToast: '{n} reopened on the phone.',
     bulkSnoozeTitle: 'Snooze {n} selected entries',
     bulkSnoozeToast: 'Snoozed {n} entries.',
@@ -635,7 +657,12 @@ export function t(key, params) {
   return str.replace(/\{(\w+)\}/g, (match, name) => (name in params ? params[name] : match));
 }
 
+// Runde-3-Befund #22: <html lang="de"> und mehrere aria-label blieben beim
+// Sprachumschalten fest deutsch - hier ist der eine Ort, der bei jedem
+// Sprachwechsel UND beim Laden laeuft (siehe app.js), also der richtige
+// Platz fuer beides.
 export function applyStaticTranslations() {
+  document.documentElement.lang = getLang();
   document.querySelectorAll('[data-i18n]').forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });
@@ -644,5 +671,8 @@ export function applyStaticTranslations() {
   });
   document.querySelectorAll('[data-i18n-title]').forEach((el) => {
     el.title = t(el.dataset.i18nTitle);
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+    el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
   });
 }
