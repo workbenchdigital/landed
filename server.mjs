@@ -8,6 +8,7 @@ import * as cdp from './lib/cdp.mjs';
 import * as store from './lib/store.mjs';
 import * as items from './lib/items.mjs';
 import * as bookmarks from './lib/bookmarks.mjs';
+import { bookmarksInstalled, forwardToBookmarks } from './lib/bookmarksHandover.mjs';
 import { checkHealth } from './lib/health.mjs';
 import { getSettings, completeSetup, updateSettings } from './lib/settings.mjs';
 import { openAppWindow, createDesktopShortcut, openInDefaultBrowser } from './lib/launcher.mjs';
@@ -536,7 +537,16 @@ async function closeDecidedHandler({ req, res, deviceKey, deviceSerial }) {
       .filter((t) => t.ids.length === 0 || t.ids.every((id) => successById.get(id)))
       .map((t) => t.item.normalizedUrl);
     const { archivedCount } = await items.applyCloseResults(deviceKey, closedNormalizedUrls);
-    write({ phase: 'done', total: allIds.length, results, archivedCount });
+    // Uebergabe an LANDED Bookmarks: unabhaengig vom CDP-Schliessergebnis am
+    // Handy (der Nutzer hat "Board" entschieden - der Link soll dort landen,
+    // auch wenn der Tab dort zufaellig schon weg war). applyCloseResults hat
+    // das Item oben bereits archiviert (kind:'board') - ein Fehlschlag hier
+    // aendert daran nichts, siehe forwardToBookmarks()-Doku.
+    const boardItems = toClose.filter((item) => item.state === 'board');
+    const boardForward = await forwardToBookmarks(
+      boardItems.map((item) => ({ url: item.url, title: item.title }))
+    );
+    write({ phase: 'done', total: allIds.length, results, archivedCount, boardForward: { ...boardForward, attempted: boardItems.length } });
   }, deviceSerial);
 }
 
@@ -644,7 +654,13 @@ async function healthHandler() {
 }
 
 async function settingsHandler() {
-  return getSettings();
+  const settings = await getSettings();
+  // 'auto' wird bei jedem Abruf frisch aufgeloest (Existenz der Bookmarks-
+  // Token-Datei) statt einmalig gespeichert - installiert der Nutzer
+  // Bookmarks spaeter, taucht die fuenfte Entscheidung ohne Neustart oder
+  // Einstellungsaenderung beim naechsten Laden von selbst auf.
+  const showBoardDecision = settings.showBoardDecision === 'auto' ? await bookmarksInstalled() : !!settings.showBoardDecision;
+  return { ...settings, showBoardDecision };
 }
 
 async function settingsCompleteHandler({ body }) {

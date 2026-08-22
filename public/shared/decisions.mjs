@@ -49,6 +49,19 @@ export const DECISIONS = [
     icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M3 4.5h10M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M4 4.5l.6 8.6a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8.6"/><path d="M6.6 7v4M9.4 7v4"/></svg>',
     closesTab: true,
   },
+  {
+    id: 'board',
+    // b/p/a/v sind belegt - o fuer "bOard", einziger freier naheliegender
+    // Buchstabe im Wort.
+    key: 'o',
+    // Uebergabe an LANDED Bookmarks (server.mjs closeDecidedHandler,
+    // lib/bookmarksHandover.mjs): archiviert wie archive/drop (kind:'board'
+    // in ARCHIVE_KIND_BY_STATE), zusaetzlich per POST an Bookmarks' Inbox
+    // weitergereicht. Fail-soft - laeuft Bookmarks nicht, bleibt der Tab
+    // einfach im Archiv stehen, kein Datenverlust.
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="1.5" width="13" height="13" rx="2"/><circle cx="8" cy="7.7" r="2.6"/><path d="M8 1.5v2.2M8 12.3v1.7"/></svg>',
+    closesTab: true,
+  },
 ];
 
 export const BY_ID = Object.fromEntries(DECISIONS.map((d) => [d.id, d]));

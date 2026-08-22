@@ -503,9 +503,31 @@ test('Befund 15: Leerzustaende in Nebenablagen unterscheiden Text- von Zustandsf
   assert.match(fn, /noMatchFilterStateBody/, 'unterscheidet nicht nach Zustandsfilter');
 });
 
+// Codemouse-Review PR #66: KEYMAP kommt ungefiltert aus decisions.mjs, waehrend
+// DECISIONS beim Laden auf 'board' gekuerzt wird, wenn Bookmarks nicht
+// installiert ist (applyBoardVisibility()) - ohne eine Pruefung gegen DECISIONS
+// im keydown-Handler waere die verborgene Entscheidung trotzdem per Taste O
+// ausloesbar.
+test('Codemouse PR #66: Tastaturkürzel-Handler prüft gegen die gefilterte DECISIONS-Liste', () => {
+  // Es gibt mehrere document.addEventListener('keydown', ...)-Bloecke in
+  // dieser Datei (Filter-Sidebar-Escape, B/P/A/V/O-Entscheidungen, ...) - ueber
+  // "canDecide" auf den richtigen eingegrenzt statt den ersten Treffer zu nehmen.
+  const handler = appJs.match(/document\.addEventListener\('keydown', \(e\) => \{[\s\S]*?canDecide[\s\S]*?\n\}\);/);
+  assert.ok(handler, 'keydown-Listener mit canDecide nicht gefunden');
+  assert.match(
+    handler[0],
+    /DECISIONS\.some\(\(d\) => d\.id === decisionId\)/,
+    'keydown-Handler prueft nicht, ob die per Taste gewaehlte Entscheidung aktuell sichtbar ist'
+  );
+});
+
 test('Befund 11: Verbindungsstatus ist ablagenuebergreifend sichtbar', () => {
   assert.match(appJs, /function renderConnectionStatus\(/, 'renderConnectionStatus fehlt');
-  assert.match(appJs, /^refreshPendingHealth\(\);/m, 'kein einmaliger Check beim Laden');
+  // \s* statt einer festen Spalte: M3 (Board-Entscheidung) hat den Bootstrap
+  // am Dateiende in eine async IIFE gepackt (applyBoardVisibility() muss vor
+  // dem ersten Render abgeschlossen sein), refreshPendingHealth() steht
+  // seitdem eingerueckt, aber weiterhin als einmaliger, unbedingter Aufruf.
+  assert.match(appJs, /^\s*refreshPendingHealth\(\);/m, 'kein einmaliger Check beim Laden');
 
   const indexHtml = readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),

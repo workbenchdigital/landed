@@ -46,6 +46,9 @@
   --drop: #ea4335;
   --drop-text: #cf2416;
   --drop-soft: #fce8e6;
+  --board: #12a5b0;
+  --board-text: #0e7a82;
+  --board-soft: #e3f6f7;
 
   --radius: 6px;
   --radius-lg: 10px;
@@ -88,6 +91,9 @@
     --drop: #f28b82;
     --drop-text: #f28b82;
     --drop-soft: #3c2a28;
+    --board: #4dd0e1;
+    --board-text: #4dd0e1;
+    --board-soft: #163a3d;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
   }
@@ -118,6 +124,9 @@
   --drop: #f28b82;
   --drop-text: #f28b82;
   --drop-soft: #3c2a28;
+  --board: #4dd0e1;
+  --board-text: #4dd0e1;
+  --board-soft: #163a3d;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
@@ -448,6 +457,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .strip-legend .dot.pc { background: var(--pc); }
 .strip-legend .dot.archive { background: var(--archive); }
 .strip-legend .dot.drop { background: var(--drop); }
+.strip-legend .dot.board { background: var(--board); }
 .strip-legend .dot.undecided {
   background-color: var(--sunken);
   background-image: repeating-linear-gradient(-45deg, var(--hatch) 0 1.5px, transparent 1.5px 4px);
@@ -764,6 +774,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .swatch.pc { background: var(--pc); }
 .swatch.archive { background: var(--archive); }
 .swatch.drop { background: var(--drop); }
+.swatch.board { background: var(--board); }
 
 /* 70/30-Aufteilung wie vom Nutzer vorgegeben: title-block bekommt eine
    Basis von 70% der Zeile (waechst/schrumpft von dort aus mit), .row-actions
@@ -942,10 +953,12 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .decision-buttons button.pc { border-color: var(--pc); color: var(--pc-text); }
 .decision-buttons button.archive { border-color: var(--archive); color: var(--archive-text); }
 .decision-buttons button.drop { border-color: var(--drop); color: var(--drop-text); }
+.decision-buttons button.board { border-color: var(--board); color: var(--board-text); }
 .decision-buttons button.active.keep { background: var(--keep-soft); border-color: var(--keep); color: var(--keep-text); }
 .decision-buttons button.active.pc { background: var(--pc-soft); border-color: var(--pc); color: var(--pc-text); }
 .decision-buttons button.active.archive { background: var(--archive-soft); border-color: var(--archive); color: var(--archive-text); }
 .decision-buttons button.active.drop { background: var(--drop-soft); border-color: var(--drop); color: var(--drop-text); }
+.decision-buttons button.active.board { background: var(--board-soft); border-color: var(--board); color: var(--board-text); }
 
 /* ---- Flache Listen (Am PC / Wiedervorlage / Verschwunden / Archiv) ----
    Kein Domain-Kasten drumherum: hier sind es typischerweise wenige Eintraege,
@@ -1088,6 +1101,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .filter-check .dot.pc { background: var(--pc); }
 .filter-check .dot.archive { background: var(--archive); }
 .filter-check .dot.drop { background: var(--drop); }
+.filter-check .dot.board { background: var(--board); }
 .filter-check .count {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -1136,6 +1150,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .kind-tag.archived { background: var(--archive-soft); color: var(--archive-text); border-color: var(--archive); }
 .kind-tag.dropped { background: var(--drop-soft); color: var(--drop-text); border-color: var(--drop); }
 .kind-tag.done { background: var(--pc-soft); color: var(--pc-text); border-color: var(--pc); }
+.kind-tag.board { background: var(--board-soft); color: var(--board-text); border-color: var(--board); }
 
 /* ---- Leerzustaende: sagen, was als Naechstes zu tun ist ---- */
 

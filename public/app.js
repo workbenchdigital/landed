@@ -1,6 +1,12 @@
-import { DECISIONS, BY_ID, KEYMAP } from './shared/decisions.mjs';
+import { DECISIONS as ALL_DECISIONS, BY_ID, KEYMAP } from './shared/decisions.mjs';
 import { openWizard, openWizardAtHint, refreshWizardLanguage } from './wizard.js';
 import { t, getLang, setLang, applyStaticTranslations } from './i18n.mjs';
+
+// Gefiltert um 'board', solange LANDED Bookmarks nicht installiert ist (siehe
+// applyBoardVisibility() unten, aufgerufen vor dem ersten Render) - alle
+// bestehenden `for (const d of DECISIONS)`-Stellen bleiben dadurch
+// unveraendert, DECISIONS zeigt einfach auf eine kuerzere Liste.
+let DECISIONS = ALL_DECISIONS;
 
 // document.documentElement.dataset.theme wurde bereits synchron im <head>
 // gesetzt (index.html) - type="module" ist deferred, das waere hier zu spaet
@@ -15,7 +21,7 @@ function applyTheme(value) {
 applyTheme(localStorage.getItem('theme') || 'auto');
 applyStaticTranslations();
 
-// Anzeige-Texte der vier Entscheidungen (frueher direkt in DECISIONS, siehe
+// Anzeige-Texte der Entscheidungen (frueher direkt in DECISIONS, siehe
 // shared/decisions.mjs) liegen jetzt in i18n.mjs unter decision<Id>Label/
 // StateLabel/Outcome - eine kleine Helferfamilie statt die Key-Zusammen-
 // setzung an jeder Stelle zu wiederholen.
@@ -35,6 +41,7 @@ function archiveKindLabel(kind) {
   return kind === 'archived' ? t('archiveKindArchived')
     : kind === 'dropped' ? t('archiveKindDropped')
     : kind === 'done' ? t('archiveKindDone')
+    : kind === 'board' ? t('archiveKindBoard')
     : kind;
 }
 
@@ -2618,9 +2625,19 @@ document.addEventListener('keydown', (e) => {
   // beiden Ablagen mit sichtbaren Entscheidungsknoepfen duerfen B/P/A/V
   // ueberhaupt auswerten (renderPcView/renderSnoozedView/Archiv zeigen keine).
   const canDecide = activeView === 'triage' || activeView === 'missing';
-  if (canDecide && KEYMAP[key] && focusedKey) {
+  // Codemouse-Review PR #66: KEYMAP kommt unveraendert aus decisions.mjs (der
+  // volle, ungefilterte Satz) - anders als DECISIONS, das applyBoardVisibility()
+  // beim Laden auf 'board' kuerzt, wenn Bookmarks nicht installiert ist. Ohne
+  // diese Pruefung waere die Taste O weiter aktiv, obwohl die zugehoerige
+  // Kachel gar nicht angezeigt wird. BY_ID bleibt bewusst UNGEFILTERT (siehe
+  // Zeile ~2284 BY_ID[item.state]?.closesTab) - ein Item, das VOR einer
+  // Bookmarks-Deinstallation schon im Zustand 'board' war, muss weiterhin
+  // korrekt als "schliesst den Tab" erkannt werden. Nur das AUSLOESEN einer
+  // NEUEN, aktuell verborgenen Entscheidung wird hier verhindert.
+  const decisionId = KEYMAP[key];
+  if (canDecide && decisionId && focusedKey && DECISIONS.some((d) => d.id === decisionId)) {
     e.preventDefault();
-    setState(focusedKey, KEYMAP[key]);
+    setState(focusedKey, decisionId);
     return;
   }
   // "Am PC" hat keine B/P/A/V-Entscheidungsknoepfe (die Entscheidung ist ja
@@ -2702,6 +2719,7 @@ async function runStep(url, label, body, { signal, onCancel } = {}) {
   let total = 0;
   let failed = 0;
   let archivedCount = 0;
+  let boardForward = null;
   await streamNdjson(res, (evt) => {
     if (evt.phase === 'start') {
       total = evt.total;
@@ -2712,6 +2730,7 @@ async function runStep(url, label, body, { signal, onCancel } = {}) {
     } else if (evt.phase === 'done') {
       failed = evt.results.filter((r) => r.success === false).length;
       archivedCount = evt.archivedCount || 0;
+      boardForward = evt.boardForward || null;
     } else if (evt.phase === 'error') {
       // Runde-3-Befund #1: hier nur zu toasten und weiterzulaufen liess
       // runStep() normal zurueckkehren - der Aufrufer sah `total` aus dem
@@ -2723,6 +2742,17 @@ async function runStep(url, label, body, { signal, onCancel } = {}) {
       throw new Error(evt.message);
     }
   });
+  // Eigener, sofortiger Toast direkt hier in runStep() statt erst im
+  // Rueckgabewert von runTransfer() ausgewertet: boardForward existiert nur
+  // im 'done'-Ereignis von /api/close-decided, andere runStep()-Aufrufer
+  // (z.B. /api/restore, /api/pc/bulk-return) liefern es einfach nicht mit -
+  // die Bedingung unten greift dort automatisch nicht. Nur bei tatsaechlich
+  // versuchten Board-Weiterleitungen - sonst wuerde jeder normale "Auf Handy
+  // uebertragen"-Vorgang ohne Board-Entscheidungen einen leeren Toast zeigen.
+  if (boardForward?.attempted) {
+    if (boardForward.ok) toast(t('boardForwardOkToast', { n: boardForward.count }));
+    else toast(t('boardForwardFailedToast'), { error: true });
+  }
   return { total, failed, archivedCount };
 }
 
@@ -2940,14 +2970,32 @@ function scheduleMidnightRerender() {
   }, nextMidnight - now);
 }
 
-renderLegend();
-renderSortStripSkeleton();
-setView('triage');
-loadInventory().then(checkDueSnoozeBanner);
-loadDevices();
-maybeAutoOpenWizard();
-scheduleMidnightRerender();
-// Runde-3-Befund #11: einmalige Pruefung beim Laden, damit der
-// Verbindungsstatus im Header auch dann einen Wert hat, wenn "Vorgemerkt"
-// in dieser Sitzung nie besucht wird.
-refreshPendingHealth();
+// Filtert DECISIONS auf 'board', BEVOR irgendetwas damit rendert - eine
+// eigene, fruehe Anfrage statt auf maybeAutoOpenWizard()s spaeteren
+// /api/settings-Aufruf zu warten (der laeuft parallel zu renderLegend() und
+// wuerde die fuenfte Kachel sonst kurz aufblitzen lassen, bevor sie beim
+// naechsten Render wieder verschwindet).
+async function applyBoardVisibility() {
+  try {
+    const settings = await fetch('/api/settings').then((r) => r.json());
+    if (!settings.showBoardDecision) DECISIONS = ALL_DECISIONS.filter((d) => d.id !== 'board');
+  } catch {
+    // Einstellungen nicht ladbar - Standard-Vokabular (inkl. Board) bleibt
+    // bestehen, kein Blocker fuer den Rest der Seite.
+  }
+}
+
+(async () => {
+  await applyBoardVisibility();
+  renderLegend();
+  renderSortStripSkeleton();
+  setView('triage');
+  loadInventory().then(checkDueSnoozeBanner);
+  loadDevices();
+  maybeAutoOpenWizard();
+  scheduleMidnightRerender();
+  // Runde-3-Befund #11: einmalige Pruefung beim Laden, damit der
+  // Verbindungsstatus im Header auch dann einen Wert hat, wenn "Vorgemerkt"
+  // in dieser Sitzung nie besucht wird.
+  refreshPendingHealth();
+})();
