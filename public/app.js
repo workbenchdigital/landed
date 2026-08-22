@@ -797,6 +797,42 @@ async function bulkPcDone(items) {
   }
 }
 
+// Sammel-Fassung von pcSendToBoard - gleiches Promise.allSettled-Muster wie
+// bulkPcDone (derselbe Codemouse-Fund gilt hier genauso: ein Promise.all
+// haette bei einem einzelnen Fehlschlag den finally-Block VOR Abschluss der
+// uebrigen, noch laufenden Aufrufe greifen lassen). Jeder Einzelaufruf macht
+// seinen eigenen forwardToBookmarks()-Versuch (server.mjs
+// pcSendToBoardHandler) - kein gebuendelter Server-Aufruf, weil das schon
+// bei einem einzelnen erreichbaren Bookmarks-Server (localhost) vernachlaess-
+// igbar wenig zusaetzliche Requests sind, verglichen mit dem Aufwand fuer
+// einen eigenen Batch-Endpunkt.
+async function bulkPcSendToBoard(items) {
+  if (!items.length) return;
+  try {
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        await flushNoteSave(item.normalizedUrl);
+        const res = await fetch('/api/pc/send-to-board', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ normalizedUrl: item.normalizedUrl }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+        return (await res.json()).boardForward;
+      })
+    );
+    const firstRejected = results.find((r) => r.status === 'rejected');
+    if (firstRejected) throw firstRejected.reason instanceof Error ? firstRejected.reason : new Error(t('genericFailed'));
+    selectedKeys.clear();
+    const forwarded = results.filter((r) => r.value?.ok).reduce((sum, r) => sum + r.value.count, 0);
+    toast(forwarded > 0 ? t('boardForwardOkToast', { n: forwarded }) : t('boardForwardFailedToast'), { error: forwarded === 0 });
+  } catch (e) {
+    toast(t('errorPrefix') + friendlyFetchError(e), { error: true });
+  } finally {
+    await loadInventory();
+  }
+}
+
 // Sammel-Wiedervorlage: gleiche Semantik wie setSnooze() fuer ein Einzelitem,
 // aber ohne dessen Render-pro-Aufruf. "Am PC"-Items sind bereits state 'pc' -
 // anders als bei setSnooze() fuer Sichten-Items gibt es hier keinen
@@ -948,6 +984,14 @@ function makePcSelectionActions(items) {
   doneBtn.addEventListener('click', () => bulkPcDone(items));
   wrap.appendChild(doneBtn);
 
+  if (DECISIONS.some((d) => d.id === 'board')) {
+    const boardBtn = document.createElement('button');
+    boardBtn.textContent = t('sendToBoardBtn');
+    boardBtn.title = t('bulkSendToBoardTitle', { n: items.length });
+    boardBtn.addEventListener('click', () => bulkPcSendToBoard(items));
+    wrap.appendChild(boardBtn);
+  }
+
   const returnBtn = document.createElement('button');
   returnBtn.textContent = t('returnToPhoneBtn');
   returnBtn.title = t('bulkReturnTitle', { n: items.length });
@@ -1074,6 +1118,28 @@ async function pcDone(item) {
     });
     if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
     toast(t('pcDoneToast'), { actionLabel: t('undoAction'), onAction: () => undoPcDone([item.normalizedUrl]) });
+    await loadInventory();
+  } catch (e) {
+    toast(t('errorPrefix') + friendlyFetchError(e), { error: true });
+  }
+}
+
+// Uebergabe an LANDED Bookmarks direkt aus "Am PC" heraus, Gegenstueck zu
+// pcDone - dieselbe Route wie ein bereits als "Board" entschiedener Tab
+// beim Sichten, nur fuer einen Tab, der sich schon in der PC-Arbeitsliste
+// befindet. Kein Undo-Toast wie bei pcDone: die Uebergabe ist wie die
+// urspruengliche Board-Entscheidung einseitig (siehe decisions.mjs).
+async function pcSendToBoard(item) {
+  await flushNoteSave(item.normalizedUrl);
+  try {
+    const res = await fetch('/api/pc/send-to-board', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrl: item.normalizedUrl }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || t('genericFailed'));
+    const { boardForward } = await res.json();
+    toast(boardForward.ok ? t('boardForwardOkToast', { n: boardForward.count }) : t('boardForwardFailedToast'), { error: !boardForward.ok });
     await loadInventory();
   } catch (e) {
     toast(t('errorPrefix') + friendlyFetchError(e), { error: true });
@@ -1872,6 +1938,17 @@ function renderPcView(items) {
       doneBtn.title = t('doneBtnTitle');
       doneBtn.addEventListener('click', () => pcDone(item));
       actions.appendChild(doneBtn);
+
+      // Nur sichtbar, wenn LANDED Bookmarks installiert ist - dieselbe
+      // Sichtbarkeitspruefung wie applyBoardVisibility() fuer die
+      // urspruengliche Board-Entscheidung beim Sichten.
+      if (DECISIONS.some((d) => d.id === 'board')) {
+        const boardBtn = document.createElement('button');
+        boardBtn.textContent = t('sendToBoardBtn');
+        boardBtn.title = t('sendToBoardBtnTitle');
+        boardBtn.addEventListener('click', () => pcSendToBoard(item));
+        actions.appendChild(boardBtn);
+      }
 
       const returnBtn = document.createElement('button');
       returnBtn.textContent = t('returnToPhoneBtn');

@@ -552,3 +552,31 @@ test('cdp.openMany/closeMany und streamOperation pruefen signal/Verbindungsstatu
   const streamOperationCalls = (serverJs.match(/return streamOperation\(req, res,/g) || []).length;
   assert.equal(streamOperationCalls, 3, 'alle drei Handler (restore/close-decided/pc-bulk-return) muessen req durchreichen, gefunden: ' + streamOperationCalls);
 });
+
+// Nutzer-Korrektur nach Auslieferung von PR #66: die Board-Entscheidung war
+// nur beim erstmaligen Sichten verfuegbar - ein bereits einsortierter "Am
+// PC"-Tab liess sich nicht mehr an LANDED Bookmarks uebergeben. Ergaenzt
+// (nicht ersetzt) die urspruengliche Entscheidung um Einzel- und
+// Sammelaktion in "Am PC", mit derselben Sichtbarkeitspruefung wie die
+// Tastatur-O-Kuerzel-Absicherung oben (DECISIONS statt ungefiltertem
+// ALL_DECISIONS/KEYMAP).
+test('"An Bookmarks senden" aus "Am PC" ist einzeln und als Sammelaktion verdrahtet', () => {
+  assert.match(appJs, /async function pcSendToBoard\(item\)/, 'pcSendToBoard fehlt');
+  assert.match(appJs, /async function bulkPcSendToBoard\(items\)/, 'bulkPcSendToBoard fehlt');
+  assert.match(appJs, /'\/api\/pc\/send-to-board'/, 'Client ruft den neuen Endpunkt nicht auf');
+
+  // Beide Stellen (Einzelzeile in renderPcView, Sammelleiste in
+  // makePcSelectionActions) muessen den Knopf hinter derselben Sichtbarkeits-
+  // pruefung verstecken wie die urspruengliche Board-Entscheidung.
+  const visibilityChecks = (appJs.match(/DECISIONS\.some\(\(d\) => d\.id === 'board'\)/g) || []).length;
+  assert.equal(visibilityChecks, 2, 'Einzel- UND Sammelaktion muessen gegen DECISIONS (nicht ALL_DECISIONS) pruefen, gefunden: ' + visibilityChecks);
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  for (const key of ['sendToBoardBtn', 'sendToBoardBtnTitle', 'bulkSendToBoardTitle']) {
+    const count = (i18n.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+  }
+});

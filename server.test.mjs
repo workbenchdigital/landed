@@ -206,6 +206,23 @@ test('POST /api/pc/done fuer unbekanntes Item liefert 400', async () => {
   });
 });
 
+// Nur der 400-Pfad (unbekanntes Item, kein Aufruf von forwardToBookmarks) -
+// der Erfolgspfad riefe forwardToBookmarks() mit den echten Defaultwerten
+// auf (echter Dateipfad unter %LOCALAPPDATA%, echter localhost-Request),
+// dasselbe Prinzip wie close-decided oben: kein echtes externes System in
+// node:test anfassen. Die Archiv-Seite (kind:'board', url/title im
+// Rueckgabewert) ist bereits in lib/items.test.mjs abgedeckt.
+test('POST /api/pc/send-to-board fuer unbekanntes Item liefert 400', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(`${base}/api/pc/send-to-board`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ normalizedUrl: 'https://nicht-vorhanden.example/' }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
 test('POST /api/pc/undo-done ohne normalizedUrl liefert 400', async () => {
   await withServer(async (base) => {
     const res = await fetch(`${base}/api/pc/undo-done`, {

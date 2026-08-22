@@ -379,6 +379,21 @@ async function pcDoneHandler({ body, deviceKey }) {
   return result;
 }
 
+// Uebergabe an LANDED Bookmarks direkt aus "Am PC" heraus - Nutzer-Korrektur
+// zur urspruenglichen Board-Entscheidung (die nur beim erstmaligen Sichten
+// verfuegbar war): auch ein bereits einsortierter "Am PC"-Tab soll sich noch
+// umentscheiden lassen. Gleicher Archiv-Uebergang wie pcDoneHandler
+// (kind:'board' statt 'done'), gleiches Fail-soft-Verhalten wie
+// closeDecidedHandler - schlaegt forwardToBookmarks fehl, bleibt der Tab
+// trotzdem im Archiv stehen, kein Datenverlust.
+async function pcSendToBoardHandler({ body, deviceKey }) {
+  if (!body.normalizedUrl) throw badRequest('Keine URL angegeben.');
+  const result = await items.markDone(deviceKey, body.normalizedUrl, 'board');
+  if (!result.ok) throw badRequest('Item nicht in der PC-Arbeitsliste gefunden.');
+  const boardForward = await forwardToBookmarks([{ url: result.url, title: result.title }]);
+  return { ok: true, boardForward };
+}
+
 // Runde-3-Befund #3/#4: Gegenstueck zu pcDoneHandler - macht "Erledigt"
 // rueckgaengig, solange kein neuerer Scan dieselbe URL schon wieder angelegt
 // hat. Kein separates Item-Vorhandensein-Check hier: items.undoMarkDone()
@@ -702,6 +717,7 @@ const routes = {
   'POST /api/bookmark-archive': bookmarkArchiveHandler,
   'POST /api/decisions': decisionsHandler,
   'POST /api/pc/done': pcDoneHandler,
+  'POST /api/pc/send-to-board': pcSendToBoardHandler,
   'POST /api/pc/undo-done': pcUndoDoneHandler,
   'POST /api/pc/return': pcReturnHandler,
   'POST /api/pc/bulk-return': pcBulkReturnHandler,
