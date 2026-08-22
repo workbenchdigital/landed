@@ -12,6 +12,7 @@ import { bookmarksInstalled, forwardToBookmarks } from './lib/bookmarksHandover.
 import { checkHealth } from './lib/health.mjs';
 import { getSettings, completeSetup, updateSettings } from './lib/settings.mjs';
 import { openAppWindow, createDesktopShortcut, openInDefaultBrowser } from './lib/launcher.mjs';
+import { startTrayIcon } from './lib/tray.mjs';
 import { friendlyError, HttpError, badRequest } from './lib/errors.mjs';
 import { config, dataPath, migrateLegacyDataDir } from './lib/config.mjs';
 import { BY_ID as DECISION_BY_ID } from './public/shared/decisions.mjs';
@@ -874,7 +875,14 @@ if (isSea() || process.argv[1] === fileURLToPath(import.meta.url)) {
       await writeDiagLine('startup.log', line);
       // Im Dev-Modus (npm start) kein Fenster aufreissen - nur die gepackte
       // App ist "ein Doppelklick oeffnet ein App-Fenster".
-      if (isSea()) await openAppWindow(`http://127.0.0.1:${PORT}`);
+      if (isSea()) {
+        await openAppWindow(`http://127.0.0.1:${PORT}`);
+        // Nutzerwunsch 22.08.2026 (abgeschaut bei LANDED Bookmarks): eigenes
+        // Icon im Systray, solange der Server laeuft - unabhaengig davon, ob
+        // gerade ein Fenster offen ist. Siehe lib/tray.mjs fuer den
+        // Lebenszyklus/Totmann-Schalter.
+        startTrayIcon({ exePath: process.execPath, port: PORT });
+      }
     });
   })();
 }

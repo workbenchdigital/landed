@@ -35,6 +35,8 @@ const EXE_FILE = path.join(BUILD_DIR, 'Landed.exe');
 const ESBUILD_BIN = path.join(ROOT, 'node_modules', 'esbuild', 'bin', 'esbuild');
 const ICON_FILE = path.join(ROOT, 'assets', 'landed.ico');
 const PLATFORM_TOOLS_CACHE = path.join(ROOT, 'platform-tools-cache');
+const TRAY_HELPER_SRC = path.join(ROOT, 'tools', 'tray-helper', 'TrayHelper.cs');
+const TRAY_HELPER_OUT = path.join(BUILD_DIR, 'LandedTray.exe');
 const PKG_VERSION = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 const WIN_VERSION = `${PKG_VERSION}.0`; // Windows-Versionsfelder brauchen 4 Teile (X.X.X.X)
 
@@ -208,6 +210,46 @@ await step('Icon + Versionsinfo mit rcedit setzen', async () => {
   if (subsystem !== 2) {
     throw new Error(`rcedit hat das Subsystem veraendert (jetzt ${subsystem}, erwartet 2/GUI) - Build abgebrochen.`);
   }
+});
+
+// Nutzerwunsch 22.08.2026, 1:1 von der Schwester-App LANDED Bookmarks
+// uebernommen (dort zuerst gebaut, per Nutzer-Fund nachgebessert - siehe
+// lib/tray.mjs fuer die volle Begruendung, warum kein PowerShell-Skript):
+// das Systray-Hilfsprogramm ist eine zur Build-Zeit per csc.exe (.NET
+// Framework, auf jedem Windows vorhanden - kein SDK-Install, keine
+// npm-Abhaengigkeit) kompilierte eigenstaendige .exe. Kein separates,
+// manuell aufzurufendes Skript wie tools/make-icon.mjs (dort: Chrome/Edge-
+// Rasterisierung, langsam, nur bei Logo-Aenderung noetig) - der Compile hier
+// ist ein schneller, deterministischer csc.exe-Aufruf, deshalb bei JEDEM
+// Build frisch erzeugt, kein eingechecktes Binary.
+const CSC_CANDIDATES = ['Framework64', 'Framework'].map((dir) =>
+  path.join(process.env.WINDIR || 'C:\\Windows', 'Microsoft.NET', dir, 'v4.0.30319', 'csc.exe')
+);
+
+function findCsc() {
+  for (const candidate of CSC_CANDIDATES) {
+    try {
+      statSync(candidate);
+      return candidate;
+    } catch {
+      // naechster Kandidat
+    }
+  }
+  throw new Error(`csc.exe nicht gefunden (geprueft: ${CSC_CANDIDATES.join(', ')}) - .NET Framework 4.x fehlt oder ist beschaedigt.`);
+}
+
+await step('Systray-Hilfsprogramm kompilieren (csc.exe)', () => {
+  const csc = findCsc();
+  execFileSync(csc, [
+    '/nologo',
+    '/target:winexe',
+    `/out:${TRAY_HELPER_OUT}`,
+    `/win32icon:${ICON_FILE}`,
+    '/reference:System.Windows.Forms.dll',
+    '/reference:System.Drawing.dll',
+    TRAY_HELPER_SRC,
+  ]);
+  statSync(TRAY_HELPER_OUT); // csc.exe liefert bei Erfolg trotzdem exit 0 mit leerer Ausgabe - Existenz zusaetzlich hart pruefen
 });
 
 await step('Selbsttest: Landed.exe muss starten', async () => {
