@@ -106,6 +106,26 @@ function filterOptionLabel(id) {
 // eine neu auftauchende Domain automatisch sichtbar ist.
 let hiddenDomains = new Set(JSON.parse(localStorage.getItem('hiddenDomains') || '[]'));
 
+// Runde-5-Befund #2 (Messung 31.08.2026): der Zufluss kommt nicht
+// gleichmaessig, sondern in wenigen grossen Schueben - 90 Tabs am 10.08.,
+// 97 am 11.08., 47 am 23.08., zusammen 234 von 298 Eintraegen an drei Tagen.
+// "289 offene Eintraege" ist eine Zahl, an der man nicht anfangen kann, "die
+// 47 vom 23. August" ist eine. firstSeen lag dafuer laengst im Datenmodell,
+// wurde aber nirgends zum Filtern angeboten.
+//
+// Dritte Dimension nach demselben Muster wie hiddenStates/hiddenDomains
+// (ausgeschlossene statt eingeschlossene Menge), damit ein neuer Einlese-Tag
+// automatisch sichtbar ist, ohne gespeicherte Einstellungen anzufassen.
+let hiddenSessions = new Set(JSON.parse(localStorage.getItem('hiddenSessions') || '[]'));
+
+// Der Einlese-Tag als lokales Kalenderdatum. firstSeen ist ein ISO-Zeitstempel
+// in UTC - ueber new Date() geparst und lokal formatiert, damit ein Tab, der
+// abends um 23:30 Ortszeit eingelesen wurde, auch unter diesem Tag steht und
+// nicht unter dem Folgetag.
+function sessionDay(item) {
+  return item.firstSeen ? localYmd(new Date(item.firstSeen)) : '';
+}
+
 // Mehrfachauswahl in Sichten (Stufe E) - bewusst NICHT persistiert (anders
 // als hiddenStates/hiddenDomains): eine Auswahl ist eine kurzlebige Aktion
 // fuer den naechsten Klick auf "entscheiden/kopieren/exportieren", kein
@@ -411,13 +431,21 @@ function matchesDomainFilter(item) {
   return !hiddenDomains.has(item.domain);
 }
 
+function matchesSessionFilter(item) {
+  return !hiddenSessions.has(sessionDay(item));
+}
+
 // Der Text-/Zustands-/Domainfilter galt bisher nur in Sichten - Ablagen wie
 // "Am PC" wachsen im echten Betrieb aber genauso gross (270+ Eintraege ohne
 // jede Suche waren nicht mehr bedienbar). Dieselbe Filterkette jetzt auch in
 // den anderen Ablagen, sichtbare Zaehler (renderSectionHead) bleiben aber die
 // ungefilterte Trayaufe - nur die Liste darunter schrumpft.
 function visibleItems(items) {
-  return items.filter(matchesFilter).filter(matchesStateFilter).filter(matchesDomainFilter);
+  return items
+    .filter(matchesFilter)
+    .filter(matchesStateFilter)
+    .filter(matchesDomainFilter)
+    .filter(matchesSessionFilter);
 }
 
 // Leichte Domain-Gruppierung fuer Ablagen ohne Mehrfachauswahl/Sammelent-
@@ -579,6 +607,53 @@ async function undoDomainDecision(previousStates) {
     await postStates(entries);
   } catch (e) {
     toast(t('undoFailedPrefix') + friendlyFetchError(e), { error: true });
+  }
+}
+
+// Runde-5-Befund #5 (Messung 31.08.2026): 33 der 298 Eintraege waren
+// Wiedergaenger, und ALLE 33 hatte der Nutzer frueher schon einmal
+// archiviert. Sie tauchen wieder auf und verlangen dieselbe Entscheidung ein
+// zweites Mal - die demotivierendste Sorte Triage-Arbeit. Seit v0.3.20 zeigt
+// das ↺-Symbol zwar, WAS damals entschieden wurde, aber entscheiden musste
+// man weiterhin einzeln.
+//
+// Nach frueherer Entscheidungsart gruppiert statt eines Sammelknopfs fuer
+// alle: ein Bestand kann Wiedergaenger mit unterschiedlicher Vorgeschichte
+// enthalten (frueher archiviert / frueher verworfen), und "wie beim letzten
+// Mal" waere dann fuer einen Teil davon schlicht falsch.
+const REPEAT_KIND_TO_STATE = { archived: 'archive', dropped: 'drop', board: 'board', done: 'pc' };
+
+function renderRepeatOffer(items) {
+  const byKind = new Map();
+  for (const item of items) {
+    if (!item.seenBefore || !item.seenBeforeKind) continue;
+    const state = REPEAT_KIND_TO_STATE[item.seenBeforeKind];
+    // Nur Arten anbieten, die aktuell auch als Entscheidung sichtbar sind -
+    // sonst koennte hier ein Board-Knopf stehen, obwohl LANDED Bookmarks
+    // gar nicht installiert ist (gleiche Pruefung wie an den anderen
+    // Board-Stellen).
+    if (!state || !DECISIONS.some((d) => d.id === state)) continue;
+    if (!byKind.has(state)) byKind.set(state, []);
+    byKind.get(state).push(item);
+  }
+  // Ein einzelner Wiedergaenger braucht keinen eigenen Streifen - dafuer
+  // reicht das ↺-Symbol an der Zeile. Der Streifen lohnt erst, wo er
+  // tatsaechlich Klicks spart.
+  const groups = [...byKind.entries()].filter(([, list]) => list.length >= 2).sort((a, b) => b[1].length - a[1].length);
+  if (!groups.length) return;
+
+  for (const [state, list] of groups) {
+    const strip = document.createElement('div');
+    strip.className = 'repeat-offer';
+    const text = document.createElement('span');
+    text.textContent = t('repeatOfferText', { n: list.length, label: decisionStateLabel(state) });
+    const btn = document.createElement('button');
+    btn.className = 'ghost-btn';
+    btn.textContent = t('repeatOfferBtn', { label: decisionLabel(state) });
+    btn.title = t('repeatOfferBtnTitle', { n: list.length, label: decisionLabel(state) });
+    btn.addEventListener('click', () => setDomainDecision(list, state));
+    strip.append(text, btn);
+    appEl.appendChild(strip);
   }
 }
 
@@ -1304,6 +1379,8 @@ const filterToggleBtn = document.getElementById('filterToggleBtn');
 const crossTrayHintEl = document.getElementById('crossTrayHint');
 const filterStateListEl = document.getElementById('filterStateList');
 const filterDomainListEl = document.getElementById('filterDomainList');
+const filterSessionListEl = document.getElementById('filterSessionList');
+const filterSessionGroupEl = document.getElementById('filterSessionGroup');
 const filterHiddenElsewhereNoteEl = document.getElementById('filterHiddenElsewhereNote');
 
 // Persistiert beide Filter-Dimensionen und haelt den Zeige-Zustand des
@@ -1312,7 +1389,8 @@ const filterHiddenElsewhereNoteEl = document.getElementById('filterHiddenElsewhe
 function saveHiddenFilters() {
   localStorage.setItem('hiddenStates', JSON.stringify([...hiddenStates]));
   localStorage.setItem('hiddenDomains', JSON.stringify([...hiddenDomains]));
-  filterToggleBtn.dataset.active = String(hiddenStates.size > 0 || hiddenDomains.size > 0);
+  localStorage.setItem('hiddenSessions', JSON.stringify([...hiddenSessions]));
+  filterToggleBtn.dataset.active = String(hiddenStates.size > 0 || hiddenDomains.size > 0 || hiddenSessions.size > 0);
 }
 
 function setFilterSidebarOpen(open) {
@@ -1363,9 +1441,12 @@ function renderFilterSidebar(listable) {
   const stateCounts = {};
   for (const opt of STATE_FILTER_OPTIONS) stateCounts[opt.id] = 0;
   const domainCounts = new Map();
+  const sessionCounts = new Map();
   for (const item of listable) {
     stateCounts[item.state] = (stateCounts[item.state] || 0) + 1;
     domainCounts.set(item.domain, (domainCounts.get(item.domain) || 0) + 1);
+    const day = sessionDay(item);
+    if (day) sessionCounts.set(day, (sessionCounts.get(day) || 0) + 1);
   }
 
   renderFilterChecklist(
@@ -1378,6 +1459,18 @@ function renderFilterSidebar(listable) {
     .sort((a, b) => b[1] - a[1]) // groesste Quelle zuerst, wie die Standard-Domain-Sortierung der Hauptliste
     .map(([domain, count]) => ({ id: domain, label: domain, dotClass: null, count }));
   renderFilterChecklist(filterDomainListEl, domainOptions, hiddenDomains);
+
+  // Runde-5-Befund #2: neueste Einlese-Sitzung zuerst - anders als bei den
+  // Domains ist hier nicht die groesste, sondern die juengste Gruppe die
+  // interessante ("was kam zuletzt rein"). Zaehler wie die anderen Listen
+  // gegen dasselbe listable.
+  const sessionOptions = [...sessionCounts.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([day, count]) => ({ id: day, label: formatYmdDe(day), dotClass: null, count }));
+  renderFilterChecklist(filterSessionListEl, sessionOptions, hiddenSessions);
+  // Bei genau einer Sitzung ist die Liste eine Zeile ohne Aussage - erst ab
+  // zwei Tagen ist "welcher Schub" ueberhaupt eine Frage.
+  filterSessionGroupEl.hidden = sessionOptions.length < 2;
 
   // Runde-3-Befund #13: hiddenDomains ist global, diese Liste aber je Ablage
   // (siehe Kommentar an der render()-Aufrufstelle) - eine anderswo
@@ -1396,6 +1489,7 @@ document.getElementById('filterSidebarClose').addEventListener('click', () => se
 document.getElementById('filterResetBtn').addEventListener('click', () => {
   hiddenStates.clear();
   hiddenDomains.clear();
+  hiddenSessions.clear();
   saveHiddenFilters();
   render(); // render() ruft renderFilterSidebar() mit der korrekten Partition selbst auf
 });
@@ -1805,6 +1899,39 @@ function makeNoteInput(item) {
   return noteInput;
 }
 
+// Runde-5-Befund #4 (Messung 31.08.2026): 0 von 298 Items hatten eine Notiz,
+// zweimal im Abstand von zwei Wochen gemessen - identisch 0. Das Eingabefeld
+// stand trotzdem in JEDER Zeile und nahm dort dauerhaft Breite und
+// Aufmerksamkeit weg, bei 289 Zeilen in "Am PC" ein spuerbarer Anteil.
+// Gleiche Mechanik wie makeSnoozeSlot direkt daneben: hinter einem schmalen
+// Symbol, das Feld klappt erst auf Klick auf. Kein Funktionsverlust.
+//
+// Eine BEREITS GESETZTE Notiz bleibt dagegen sofort sichtbar - sie hinter
+// einem Symbol zu verstecken waere die eine Aenderung, die hier echten
+// Schaden anrichten koennte: eine geschriebene Notiz, die man nicht mehr
+// sieht, ist verloren, egal wie selten das Feld sonst benutzt wird.
+function makeNoteSlot(item) {
+  const slot = document.createElement('div');
+  slot.className = 'note-slot';
+  if (item.note) {
+    slot.appendChild(makeNoteInput(item));
+    return slot;
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'note-btn';
+  btn.textContent = '✎';
+  btn.title = t('noteAddBtnTitle');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const input = makeNoteInput(item);
+    slot.replaceChildren(input);
+    input.focus();
+  });
+  slot.appendChild(btn);
+  return slot;
+}
+
 // "Am PC erledigen": Items, deren Tab am Telefon schon geschlossen wurde
 // (state 'pc' + closedAt), aber die als Arbeitsliste hier bestehen bleiben.
 // Nach Domain gruppiert wie Sichten (wird im echten Betrieb genauso gross),
@@ -1930,7 +2057,7 @@ function renderPcView(items) {
 
       const actions = document.createElement('div');
       actions.className = 'side-actions';
-      actions.appendChild(makeNoteInput(item));
+      actions.appendChild(makeNoteSlot(item));
       actions.appendChild(makeSnoozeSlot(item));
 
       const doneBtn = document.createElement('button');
@@ -2014,7 +2141,7 @@ function renderSnoozedView(items) {
 
     const actions = document.createElement('div');
     actions.className = 'side-actions';
-    actions.appendChild(makeNoteInput(item));
+    actions.appendChild(makeNoteSlot(item));
     actions.appendChild(makeSnoozeSlot(item));
     const showBtn = document.createElement('button');
     showBtn.textContent = t('snoozeShowNow');
@@ -2527,7 +2654,15 @@ function render() {
   };
   renderFilterSidebar(activeItemsById[activeView] || listable);
   renderSelectionBar();
-  const filtered = listable.filter(matchesFilter).filter(matchesStateFilter).filter(matchesDomainFilter);
+  // Runde-5-Befund #2, beim Live-Test aufgefallen: hier stand die Filterkette
+  // ein zweites Mal ausgeschrieben (matchesFilter/State/Domain), parallel zu
+  // visibleItems() - historisch gewachsen, weil der Filter urspruenglich NUR
+  // in Sichten galt und erst spaeter auf die anderen Ablagen ausgeweitet
+  // wurde. Der neue Sitzungsfilter griff dadurch ueberall AUSSER in Sichten,
+  // ausgerechnet der Ablage, in der man sichtet. Statt ihn hier
+  // nachzutragen (und die naechste neue Dimension wieder vergessen zu
+  // koennen) benutzen jetzt beide Seiten dieselbe Funktion.
+  const filtered = visibleItems(listable);
   const groups = groupByDomain(filtered);
   appEl.innerHTML = '';
 
@@ -2564,6 +2699,8 @@ function render() {
   selectAllToggle.appendChild(makeSelectAllCheckbox(filtered.map((i) => i.normalizedUrl)));
   selectAllToggle.append(t('selectAllVisibleLabel'));
   appEl.appendChild(selectAllToggle);
+
+  renderRepeatOffer(filtered);
 
   groups.forEach(([domain, items], groupIndex) => {
     const group = document.createElement('div');

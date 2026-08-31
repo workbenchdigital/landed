@@ -881,6 +881,25 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 }
 .copy-btn:hover { background: var(--sunken); border-color: var(--signal); color: var(--ink); }
 
+/* Runde-5-Befund #4: eingeklapptes Notizfeld (0 von 298 Notizen genutzt).
+   Kein min-width wie bei .snooze-slot: der Slot soll im eingeklappten
+   Zustand genau die Knopfbreite belegen und beim Aufklappen dem Feld Platz
+   lassen, das sich dann wie zuvor verhaelt. */
+.note-slot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.note-btn {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1;
+  border-color: var(--line-strong);
+  background: var(--card);
+  color: var(--ink-soft);
+}
+.note-btn:hover { background: var(--sunken); border-color: var(--signal); color: var(--ink); }
+
 /* Datums-Schnellmenue (Morgen/Naechste Woche/Monat/Datum waehlen) - schwebt
    ueber der Zeile statt den Zeilenfluss zu sprengen, dieselbe Anzahl an
    Optionen wuerde inline die enge 30%-Aktionszone (.row-actions) sprengen. */
@@ -1079,6 +1098,24 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   cursor: pointer;
 }
 .select-all-toggle input { accent-color: var(--signal); width: 1rem; height: 1rem; }
+
+/* Runde-5-Befund #5: Sammelangebot fuer Wiedergaenger. Bewusst ruhig
+   gehalten (kein Warn-Rot wie .urgent) - das ist ein Angebot, keine
+   Stoerung, und es steht direkt ueber der Liste, die es verkuerzt. */
+.repeat-offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.5rem;
+  background: var(--sunken);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
 
 .filter-check {
   display: flex;

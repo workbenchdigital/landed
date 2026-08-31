@@ -290,11 +290,19 @@ async function openExternalHandler({ body }) {
 // die UI nach einem Reload "noch nicht eingelesen", obwohl bereits ein
 // Bestand vorliegt (der Zeitstempel wurde bisher nur direkt nach einem
 // frischen Scan angezeigt, nicht aus gespeicherten Daten geladen).
+// openCount/dueSnoozeCount kommen in BEIDEN Rueckgabezweigen mit, auch im
+// "noch nie gescannt"-Fall: ein aus der JSON-Fassung uebernommener Bestand
+// (tools/migrate-v2.mjs) hat Items, aber keinen lastScan-Zeitstempel - das
+// Systray-Icon soll auch dort die richtige Zahl zeigen, nicht "Landed" ohne
+// Zusatz.
 async function scanMetaHandler({ deviceKey }) {
-  const meta = await items.getMeta(deviceKey);
-  const recentDoneCount = await items.getRecentArchiveCount(7);
-  if (!meta.lastScan) return { recentDoneCount };
-  return { sourceCount: meta.lastScanSourceCount, timestamp: meta.lastScan, recentDoneCount };
+  const [meta, recentDoneCount, counts] = await Promise.all([
+    items.getMeta(deviceKey),
+    items.getRecentArchiveCount(7),
+    items.getOpenCounts(deviceKey),
+  ]);
+  if (!meta.lastScan) return { recentDoneCount, ...counts };
+  return { sourceCount: meta.lastScanSourceCount, timestamp: meta.lastScan, recentDoneCount, ...counts };
 }
 
 async function bookmarkFoldersHandler() {

@@ -238,6 +238,15 @@
     <div id="filterStateList"></div>
     <p class="filter-sidebar-heading" data-i18n="filterHeadingSource">Quelle</p>
     <div id="filterDomainList"></div>
+    <!-- Runde-5-Befund #2: der Zufluss kommt in wenigen grossen Schueben
+         (gemessen 31.08.2026: 234 von 298 Eintraegen an drei Tagen). Diese
+         Gruppe bleibt ausgeblendet, solange es nur einen Einlese-Tag gibt -
+         eine einzeilige Liste waere dort keine Filterhilfe, sondern nur
+         Rauschen (siehe renderFilterSidebar). -->
+    <div id="filterSessionGroup" hidden>
+      <p class="filter-sidebar-heading" data-i18n="filterHeadingSession">Eingelesen am</p>
+      <div id="filterSessionList"></div>
+    </div>
     <!-- Runde-3-Befund #13: hiddenDomains wirkt geraeteweit/ablagenweit
          global, diese Liste zeigt aber nur Domains der aktuellen Ablage -
          eine anderswo ausgeblendete Domain, die hier nicht vorkommt, war

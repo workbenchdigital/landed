@@ -580,3 +580,91 @@ test('"An Bookmarks senden" aus "Am PC" ist einzeln und als Sammelaktion verdrah
     assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// Runde 5 (Messung 31.08.2026 gegen den echten Bestand): nach zwei Wochen
+// Funktionsausbau war "Am PC" von 283 auf 289 GEWACHSEN und das Median-Alter
+// von 7 auf 19 Tage gestiegen. Alle bisherigen Runden hatten die
+// Abarbeitungsgeschwindigkeit optimiert - der Engpass lag woanders.
+// ---------------------------------------------------------------------------
+
+// Befund #2: der Zufluss kommt in wenigen grossen Schueben (90/97/47 an drei
+// Tagen = 234 von 298). firstSeen lag laengst im Datenmodell, wurde aber
+// nirgends zum Filtern angeboten.
+test('Runde 5 #2: Einlese-Sitzungen sind eine eigene Filterdimension', () => {
+  assert.match(appJs, /function sessionDay\(item\)/, 'sessionDay fehlt');
+  assert.match(appJs, /function matchesSessionFilter\(item\)/, 'matchesSessionFilter fehlt');
+  assert.match(appJs, /\.filter\(matchesSessionFilter\)/, 'visibleItems wendet den Sitzungsfilter nicht an');
+  // Muss wie die beiden anderen Dimensionen persistiert UND zurueckgesetzt
+  // werden, sonst bliebe ein Filter nach "Alle anzeigen" heimlich aktiv.
+  assert.match(appJs, /localStorage\.setItem\('hiddenSessions'/, 'hiddenSessions wird nicht persistiert');
+  assert.match(appJs, /hiddenSessions\.clear\(\)/, '"Alle anzeigen" setzt den Sitzungsfilter nicht zurueck');
+  assert.match(appJs, /hiddenSessions\.size > 0/, 'der Filter-Knopf zeigt einen aktiven Sitzungsfilter nicht an');
+
+  const indexHtml = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),
+    'utf8'
+  );
+  assert.match(indexHtml, /id="filterSessionList"/, 'Liste fehlt in index.html');
+  assert.match(indexHtml, /id="filterSessionGroup"[^>]*hidden/, 'Gruppe muss per Default versteckt sein (erst ab zwei Sitzungen sinnvoll)');
+});
+
+// Befund #4: 0 von 298 Items hatten eine Notiz - zweimal im Abstand von zwei
+// Wochen gemessen, identisch 0. Das Feld stand trotzdem in jeder Zeile.
+test('Runde 5 #4: Notizfeld ist eingeklappt, eine vorhandene Notiz bleibt sichtbar', () => {
+  const fn = appJs.match(/function makeNoteSlot\(item\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'makeNoteSlot fehlt');
+  assert.match(fn, /if \(item\.note\)/, 'eine bereits gesetzte Notiz muss sofort sichtbar bleiben, sonst waere sie unauffindbar');
+  // Die beiden Zeilen-Renderer (Am PC, Wiedervorlage) duerfen das Feld nicht
+  // mehr direkt einhaengen.
+  const directUses = (appJs.match(/actions\.appendChild\(makeNoteInput\(item\)\)/g) || []).length;
+  assert.equal(directUses, 0, 'keine Zeile darf makeNoteInput mehr direkt einhaengen, gefunden: ' + directUses);
+  assert.equal((appJs.match(/makeNoteSlot\(item\)/g) || []).length, 3, 'makeNoteSlot muss definiert und an beiden Zeilen-Stellen aufgerufen werden');
+});
+
+// Befund #5: 33 Wiedergaenger, ALLE 33 frueher archiviert - dieselbe
+// Entscheidung ein zweites Mal, einzeln.
+test('Runde 5 #5: Wiedergaenger werden nach frueherer Entscheidung gesammelt angeboten', () => {
+  const fn = appJs.match(/function renderRepeatOffer\(items\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'renderRepeatOffer fehlt');
+  assert.match(appJs, /renderRepeatOffer\(filtered\)/, 'renderRepeatOffer wird in der Sichten-Ansicht nicht aufgerufen');
+  // Nach Art gruppiert, nicht ein Sammelknopf fuer alle: ein gemischter
+  // Bestand wuerde sonst teilweise falsch entschieden.
+  assert.match(fn, /byKind/, 'muss nach frueherer Entscheidungsart gruppieren');
+  assert.match(fn, /list\.length >= 2/, 'ein einzelner Wiedergaenger braucht keinen eigenen Streifen');
+  // Board darf nur angeboten werden, wenn die Entscheidung ueberhaupt
+  // sichtbar ist (LANDED Bookmarks installiert).
+  assert.match(fn, /DECISIONS\.some\(\(d\) => d\.id === state\)/, 'muss gegen die gefilterte DECISIONS-Liste pruefen');
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  for (const key of ['repeatOfferText', 'repeatOfferBtn', 'repeatOfferBtnTitle', 'filterHeadingSession', 'noteAddBtnTitle']) {
+    const count = (i18n.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+  }
+});
+
+// Befund #1: 11 von 12 gesetzten Wiedervorlagen waren ueberfaellig - es gab
+// keinen Kanal, der den Nutzer erreicht, ohne dass er die App oeffnet.
+test('Runde 5 #1: Systray-Helfer wertet die Zaehler aus und meldet Faelliges', () => {
+  const trayCs = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'tray-helper', 'TrayHelper.cs'),
+    'utf8'
+  );
+  assert.match(trayCs, /openCount/, 'Tooltip nutzt openCount nicht');
+  assert.match(trayCs, /dueSnoozeCount/, 'Tooltip nutzt dueSnoozeCount nicht');
+  assert.match(trayCs, /static Icon WithDueDot/, 'Faelligkeits-Punkt am Icon fehlt');
+  assert.match(trayCs, /due > 0 \? iconDue : icon/, 'das Icon wird nicht nach Faelligkeit umgeschaltet');
+  // Der Totmann-Schalter darf NUR auf Verbindungsfehler reagieren: ein
+  // unerwartetes Antwortformat haette sonst denselben Effekt wie ein
+  // Serverabsturz und das Icon waere weg, obwohl Landed laeuft.
+  assert.match(trayCs, /catch \{ \}\s*\};\s*timer\.Start\(\);/, 'die Auswertung muss einen eigenen, folgenlosen catch-Block haben');
+
+  const serverJs = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'server.mjs'),
+    'utf8'
+  );
+  assert.match(serverJs, /items\.getOpenCounts\(deviceKey\)/, '/api/scan-meta liefert die Zaehler nicht');
+});
