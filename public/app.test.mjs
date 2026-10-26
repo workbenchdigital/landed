@@ -34,6 +34,23 @@ test('kein toter Verweis auf den frueheren Tippfehler openSnoozeEditor', () => {
   assert.ok(!appJs.includes('openSnoozeEditor'), 'openSnoozeEditor existiert nicht - die korrekte Funktion heisst openSnoozeMenu');
 });
 
+// Runde 6, Aufgabe 1: der Textfilter durchsucht auch die Notiz, damit
+// Hashtags in Notizen als Kategorien taugen. Verhalten live an einer
+// isolierten Instanz belegt, hier nur die Verkabelung.
+test('Textfilter durchsucht die Notiz, Platzhalter nennt sie in DE und EN', () => {
+  const fn = appJs.match(/function matchesFilter\(item\) \{[\s\S]*?\n\}/);
+  assert.ok(fn, 'matchesFilter nicht gefunden');
+  assert.match(fn[0], /item\.note/, 'matchesFilter prueft item.note nicht');
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  const placeholders = [...i18n.matchAll(/filterInputPlaceholder: '([^']*)'/g)].map((m) => m[1]);
+  assert.equal(placeholders.length, 2, 'filterInputPlaceholder muss in DE und EN vorhanden sein');
+  assert.match(placeholders[0], /Notiz/, 'DE-Platzhalter nennt die Notiz nicht');
+  assert.match(placeholders[1], /note/, 'EN-Platzhalter nennt die Notiz nicht');
+});
+
 // Vorschlag 2 aus der Produktanalyse: "Aeltestes zuerst"-Sortiermodus.
 // Textueller Regressionstest fuer die Verkabelung (die eigentliche Sortier-
 // LOGIK ist per Browser-Nachstellung an einer isolierten Instanz mit
@@ -725,4 +742,49 @@ test('Zustand "phone" existiert und bleibt bewusst ohne eigene Ablage', () => {
   );
   const map = itemsJs.match(/const ARCHIVE_KIND_BY_STATE = \{[^}]*\}/)[0];
   assert.ok(!map.includes('phone'), "'phone' darf nicht archiviert werden - das Item muss aktiv bleiben");
+});
+
+test('Wiedervorlage "Ohne Termin": erste Option, i18n in beiden Sprachen, Marker nie als Datum ausgegeben', () => {
+  const fn = appJs.match(/function snoozeQuickOptions\(todayYmd\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'snoozeQuickOptions nicht gefunden');
+  const keys = [...fn.matchAll(/label: t\('(\w+)'\)/g)].map((m) => m[1]);
+  assert.equal(keys[0], 'snoozeNoDate', '"Ohne Termin" muss die erste Option sein');
+  assert.ok(keys.indexOf('snoozeNoDate') < keys.indexOf('snoozeTomorrow'), '"Ohne Termin" muss vor "Morgen" stehen');
+  assert.match(fn, /snoozeNoDate'\), value: NO_DUE_DATE/, 'Option setzt nicht NO_DUE_DATE');
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  for (const key of ['snoozeNoDate', 'snoozeNoDateTitle', 'noDueDate']) {
+    const count = (i18n.match(new RegExp(`\\b${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in DE und EN vorhanden sein, gefunden: ${count}`);
+  }
+
+  // Jede Datumsausgabe von snoozeUntil muss den Marker vorher abfangen,
+  // sonst steht "31.12.9999" in der Oberflaeche.
+  const outputs = [...appJs.matchAll(/formatYmdDe\(item\.snoozeUntil\)/g)];
+  assert.ok(outputs.length >= 3, 'erwartet mindestens Knopf-Titel und zwei Zeilentexte');
+  for (const m of outputs) {
+    const before = appJs.slice(Math.max(0, m.index - 400), m.index);
+    assert.match(before, /isNoDueDate\(item\.snoozeUntil\)/, `Datumsausgabe bei Zeichen ${m.index} faengt den Marker nicht ab`);
+  }
+  assert.match(appJs, /input\.value = isNoDueDate\(item\.snoozeUntil\) \? ''/, 'Datumsfeld wird mit dem Marker vorbelegt');
+});
+
+test('Wiedervorlage: Knopf "Ueberfaellige auf Ohne Termin" fragt nach und nutzt bulkSetSnooze', () => {
+  const fn = appJs.match(/function renderSnoozedView\(items\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'renderSnoozedView nicht gefunden');
+  assert.match(fn, /shown\.filter\(\(i\) => i\.snoozeUntil <= todayYmd\)/, 'ueberfaellig = snoozeUntil <= heute fehlt');
+  assert.match(fn, /if \(overdue\.length\)/, 'Knopf muss nur bei mindestens einem ueberfaelligen Eintrag erscheinen');
+  assert.match(fn, /if \(!\(await showConfirmDialog\(t\('overdueToNoDateConfirm'[^\n]*\n\s*await bulkSetSnooze\(overdue, NO_DUE_DATE\);/, 'Bestaetigung vor bulkSetSnooze(overdue, NO_DUE_DATE) fehlt');
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  for (const key of ['overdueToNoDateBtn', 'overdueToNoDateConfirm']) {
+    const count = (i18n.match(new RegExp(`\\b${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in DE und EN vorhanden sein, gefunden: ${count}`);
+  }
 });

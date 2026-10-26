@@ -1,4 +1,5 @@
 import { DECISIONS as ALL_DECISIONS, BY_ID, KEYMAP } from './shared/decisions.mjs';
+import { NO_DUE_DATE, isNoDueDate } from './shared/snooze.mjs';
 import { openWizard, openWizardAtHint, refreshWizardLanguage } from './wizard.js';
 import { t, getLang, setLang, applyStaticTranslations } from './i18n.mjs';
 
@@ -420,7 +421,8 @@ function groupByDomain(items) {
 function matchesFilter(item) {
   if (!filterText) return true;
   const t = filterText.toLowerCase();
-  return item.title.toLowerCase().includes(t) || item.url.toLowerCase().includes(t);
+  return item.title.toLowerCase().includes(t) || item.url.toLowerCase().includes(t)
+    || (item.note != null && item.note.toLowerCase().includes(t));
 }
 
 function matchesStateFilter(item) {
@@ -1674,9 +1676,11 @@ function makeSnoozeButton(item, slot) {
   btn.type = 'button';
   btn.className = 'snooze-btn';
   btn.textContent = '⏲';
-  btn.title = item.snoozeUntil
-    ? t('snoozeSetTitle', { date: formatYmdDe(item.snoozeUntil) })
-    : t('snoozeSetBtnTitle');
+  btn.title = isNoDueDate(item.snoozeUntil)
+    ? t('snoozeNoDateTitle')
+    : item.snoozeUntil
+      ? t('snoozeSetTitle', { date: formatYmdDe(item.snoozeUntil) })
+      : t('snoozeSetBtnTitle');
   if (item.snoozeUntil) btn.dataset.set = 'true';
   btn.addEventListener('click', (e) => { e.stopPropagation(); openSnoozeMenu(slot, item); });
   return btn;
@@ -1694,6 +1698,7 @@ function snoozeQuickOptions(todayYmd) {
     return localYmd(d);
   };
   return [
+    { label: t('snoozeNoDate'), value: NO_DUE_DATE },
     { label: t('snoozeTomorrow'), value: plus(1) },
     { label: t('snoozeNextWeek'), value: plus(7) },
     { label: t('snoozeInMonth'), value: plus(30) },
@@ -1744,7 +1749,7 @@ function openSnoozeDateInput(slot, item) {
   input.type = 'date';
   input.className = 'snooze-input';
   input.title = t('snoozeDateInputTitle');
-  input.value = item.snoozeUntil || '';
+  input.value = isNoDueDate(item.snoozeUntil) ? '' : item.snoozeUntil || '';
   const revert = () => slot.replaceChildren(makeSnoozeButton(item, slot));
   input.addEventListener('click', (e) => e.stopPropagation());
   input.addEventListener('change', (e) => { e.stopPropagation(); setSnooze(item, input.value); });
@@ -2119,6 +2124,19 @@ function renderSnoozedView(items) {
   const todayYmd = localYmd();
   const sorted = [...shown].sort((a, b) => a.snoozeUntil.localeCompare(b.snoozeUntil));
 
+  // Der Marker NO_DUE_DATE ist nie <= heute und faellt hier von selbst heraus.
+  const overdue = shown.filter((i) => i.snoozeUntil <= todayYmd);
+  if (overdue.length) {
+    const overdueBtn = document.createElement('button');
+    overdueBtn.className = 'ghost-btn';
+    overdueBtn.textContent = t('overdueToNoDateBtn', { n: overdue.length });
+    overdueBtn.addEventListener('click', async () => {
+      if (!(await showConfirmDialog(t('overdueToNoDateConfirm', { n: overdue.length })))) return;
+      await bulkSetSnooze(overdue, NO_DUE_DATE);
+    });
+    snoozedSectionEl.appendChild(overdueBtn);
+  }
+
   const list = makeFlatList(snoozedSectionEl);
   for (const item of sorted) {
     const due = item.snoozeUntil <= todayYmd;
@@ -2134,9 +2152,11 @@ function renderSnoozedView(items) {
 
     const hint = document.createElement('span');
     hint.className = 'missing-hint' + (due ? ' urgent' : '');
-    hint.textContent = due
-      ? (item.snoozeUntil === todayYmd ? t('dueToday') : t('overdueSince', { date: formatYmdDe(item.snoozeUntil) }))
-      : t('dueUntil', { date: formatYmdDe(item.snoozeUntil) });
+    hint.textContent = isNoDueDate(item.snoozeUntil)
+      ? t('noDueDate')
+      : due
+        ? (item.snoozeUntil === todayYmd ? t('dueToday') : t('overdueSince', { date: formatYmdDe(item.snoozeUntil) }))
+        : t('dueUntil', { date: formatYmdDe(item.snoozeUntil) });
     row.appendChild(hint);
 
     const actions = document.createElement('div');
