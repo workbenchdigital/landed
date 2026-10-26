@@ -398,6 +398,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   cursor: pointer;
   max-width: 11rem;
 }
+.archive-domain-select { max-width: 16rem; }
 
 /* ---- Signature: der Kontrollstreifen ------------------------------------
    Der eine Messwert, um den sich die ganze App dreht: wie viel ist noch
@@ -433,7 +434,6 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   transition: transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .strip .s-keep { background: var(--keep); }
-.strip .s-phone { background: var(--phone); }
 .strip .s-pc { background: var(--pc); }
 .strip .s-archive { background: var(--archive); }
 .strip .s-drop { background: var(--drop); }
@@ -467,7 +467,6 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   vertical-align: baseline;
 }
 .strip-legend .dot.keep { background: var(--keep); }
-.strip-legend .dot.phone { background: var(--phone); }
 .strip-legend .dot.pc { background: var(--pc); }
 .strip-legend .dot.archive { background: var(--archive); }
 .strip-legend .dot.drop { background: var(--drop); }
@@ -821,7 +820,8 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   gap: 0.35rem;
   min-width: 0;
 }
-.tab-row .title-block a {
+.tab-row .title-block a,
+.tab-row .title-block .title-text {
   text-decoration: none;
   font-weight: 500;
   font-size: 0.92rem;
@@ -1152,7 +1152,6 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   background: var(--line-strong);
 }
 .filter-check .dot.keep { background: var(--keep); }
-.filter-check .dot.phone { background: var(--phone); }
 .filter-check .dot.pc { background: var(--pc); }
 .filter-check .dot.archive { background: var(--archive); }
 .filter-check .dot.drop { background: var(--drop); }

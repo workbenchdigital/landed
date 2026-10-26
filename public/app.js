@@ -1,5 +1,6 @@
 import { DECISIONS as ALL_DECISIONS, BY_ID, KEYMAP } from './shared/decisions.mjs';
 import { NO_DUE_DATE, isNoDueDate } from './shared/snooze.mjs';
+import { isHttpUrl } from './shared/url.mjs';
 import { openWizard, openWizardAtHint, refreshWizardLanguage } from './wizard.js';
 import { t, getLang, setLang, applyStaticTranslations } from './i18n.mjs';
 
@@ -93,7 +94,11 @@ let pcFocusMode = localStorage.getItem('pcFocusMode') === '1';
 // damit ein neuer Zustand in DECISIONS automatisch sichtbar ist, ohne die
 // gespeicherten Einstellungen aller Nutzer anzufassen.
 let hiddenStates = new Set(JSON.parse(localStorage.getItem('hiddenStates') || '[]'));
-const STATE_FILTER_OPTIONS = [{ id: 'open', key: null }, ...DECISIONS];
+// 'phone' steht in keiner Liste am PC (nicht in listable, Leiste oder Filter):
+// diese Links bleiben am Telefon offen und sonst nichts, ein Filterpunkt
+// dafuer waere immer 0 und wirkungslos.
+const LISTED_DECISIONS = DECISIONS.filter((d) => d.id !== 'phone');
+const STATE_FILTER_OPTIONS = [{ id: 'open', key: null }, ...LISTED_DECISIONS];
 // 'open' ist kein Eintrag in DECISIONS und hat darum keinen eigenen
 // i18n-Key ueber decisionLabel() - Sonderfall hier statt in der Helferfamilie.
 function filterOptionLabel(id) {
@@ -534,7 +539,11 @@ function renderDomainGroup(container, domain, items, { selectable = false } = {}
   const count = document.createElement('span');
   count.className = 'count';
   count.textContent = String(items.length);
-  header.append(chevron, favicon, name, count);
+  const actions = document.createElement('div');
+  actions.className = 'group-actions';
+  actions.appendChild(makeOpenGroupButton(items));
+  actions.appendChild(makeExportGroupButton(items));
+  header.append(chevron, favicon, name, count, actions);
   header.addEventListener('click', () => {
     if (collapsedDomains.has(domain)) collapsedDomains.delete(domain);
     else collapsedDomains.add(domain);
@@ -808,6 +817,34 @@ async function openExternal(urls) {
 async function openAllInBrowser(items) {
   if (!(await showConfirmDialog(t('openAllInBrowserConfirm', { n: items.length })))) return;
   openExternal(items.map((item) => item.url));
+}
+
+// Knopf je Domain-Gruppe: "ich sitze am PC und arbeite diese Links jetzt ab".
+// Bis zu dieser Grenze oeffnet ein Klick sofort (ein Klick statt sechs), erst
+// darueber fragt es nach wie openAllInBrowser.
+const OPEN_GROUP_CONFIRM_ABOVE = 10;
+
+async function openGroupInBrowser(items) {
+  if (items.length > OPEN_GROUP_CONFIRM_ABOVE && !(await showConfirmDialog(t('openGroupConfirm', { n: items.length })))) return;
+  openExternal(items.map((item) => item.url));
+}
+
+function makeOpenGroupButton(items) {
+  const btn = document.createElement('button');
+  btn.textContent = t('openGroupBtn');
+  btn.title = t('openGroupTitle', { n: items.length });
+  btn.addEventListener('click', (e) => { e.stopPropagation(); openGroupInBrowser(items); });
+  return btn;
+}
+
+// Zweiter Knopf im group-actions-Bereich: die Gruppe direkt als Datei ablegen,
+// ohne Umweg ueber die Mehrfachauswahl.
+function makeExportGroupButton(items) {
+  const btn = document.createElement('button');
+  btn.textContent = t('exportGroupBtn');
+  btn.title = t('exportGroupTitle', { n: items.length });
+  btn.addEventListener('click', (e) => { e.stopPropagation(); exportItems(items, 'markdown'); });
+  return btn;
 }
 
 // Klicks auf Titel-Links abfangen, statt an jeder Stelle einzeln umzubauen -
@@ -1570,7 +1607,7 @@ function renderLegend() {
 function renderSortStripSkeleton() {
   const strip = document.getElementById('sortStrip');
   strip.innerHTML = '';
-  for (const d of DECISIONS) {
+  for (const d of LISTED_DECISIONS) {
     const seg = document.createElement('span');
     seg.className = 's-' + d.id;
     seg.id = 'seg-' + d.id;
@@ -1597,14 +1634,16 @@ function renderSortStripSkeleton() {
     legend.appendChild(span);
   };
   addEntry('undecided', t('stateOpenLegendLabel'), 'c-undecided');
-  for (const d of DECISIONS) addEntry(d.id, decisionStateLabel(d.id), 'c-' + d.id);
+  for (const d of LISTED_DECISIONS) addEntry(d.id, decisionStateLabel(d.id), 'c-' + d.id);
 }
 
 function renderSortStrip() {
-  const total = inventory.length || 1;
+  // 'phone'-Eintraege zaehlen nicht mit: sonst bliebe rechts eine Luecke.
+  const shown = inventory.filter((item) => item.state !== 'phone');
+  const total = shown.length || 1;
   const counts = { undecided: 0 };
-  for (const d of DECISIONS) counts[d.id] = 0;
-  for (const item of inventory) {
+  for (const d of LISTED_DECISIONS) counts[d.id] = 0;
+  for (const item of shown) {
     counts[item.state === 'open' ? 'undecided' : item.state]++;
   }
   // transform statt flex-basis animieren (GPU-beschleunigt, kein Reflow) -
@@ -1613,7 +1652,7 @@ function renderSortStrip() {
   // beziehen sich dabei auf die unskalierte Box, daher in dieser Reihenfolge
   // korrekt kombinierbar).
   let offset = 0;
-  for (const d of DECISIONS) {
+  for (const d of LISTED_DECISIONS) {
     const fraction = counts[d.id] / total;
     document.getElementById('seg-' + d.id).style.transform = `translateX(${offset * 100}%) scaleX(${fraction})`;
     offset += fraction;
@@ -1831,10 +1870,15 @@ function renderTitleBlock(item) {
   // dadurch faelschlich auf einer eigenen Zeile zwischen Titel und URL.
   const line = document.createElement('div');
   line.className = 'title-line';
-  const link = document.createElement('a');
-  link.href = item.url;
-  link.target = '_blank';
-  link.rel = 'noopener';
+  // Ohne http/https kein Anker, nur der Titel als Text (siehe shared/url.mjs).
+  const link = document.createElement(isHttpUrl(item.url) ? 'a' : 'span');
+  if (link.tagName === 'A') {
+    link.href = item.url;
+    link.target = '_blank';
+    link.rel = 'noopener';
+  } else {
+    link.className = 'title-text';
+  }
   link.textContent = item.title;
   link.title = item.title; // voller Text als Tooltip, da Zeilen hart abgeschnitten werden
   line.appendChild(link);
@@ -2012,6 +2056,13 @@ function renderPcView(items) {
   openAllBtn.title = t('openAllInBrowserTitle');
   openAllBtn.addEventListener('click', () => openAllInBrowser(shown));
   pcSectionEl.appendChild(openAllBtn);
+
+  const exportAllBtn = document.createElement('button');
+  exportAllBtn.className = 'ghost-btn';
+  exportAllBtn.textContent = t('exportAllMarkdownBtn', { n: shown.length });
+  exportAllBtn.title = t('exportAllMarkdownTitle');
+  exportAllBtn.addEventListener('click', () => exportItems(shown, 'markdown'));
+  pcSectionEl.appendChild(exportAllBtn);
 
   // Eigener Hinweistext statt des #keyboardHint-Absatzes: der lebt fest in
   // view-triage's Markup (index.html), diese Ablage baut ihren Inhalt
@@ -2442,15 +2493,22 @@ function renderArchiveBrowse(results, { reset, hasMore }) {
   }
 }
 
+// Die beiden Archiv-Schalter der Werkzeugleiste (auch Verworfene, Domain) als
+// Anfrageparameter, gemeinsam fuer Blaettern und Suche.
+function addArchiveFilterParams(params) {
+  if (document.getElementById('archiveIncludeDropped').checked) params.set('includeDropped', '1');
+  const domain = document.getElementById('archiveDomainSelect').value;
+  if (domain) params.set('domain', domain);
+}
+
 async function loadArchiveBrowsePage({ reset }) {
   if (reset) archiveBrowseOffset = 0;
   const requestId = ++archiveBrowseRequestId;
   const moreBtn = archiveResultsEl.querySelector('.archive-load-more');
   if (moreBtn) moreBtn.disabled = true;
   try {
-    const includeDropped = document.getElementById('archiveIncludeDropped').checked;
     const params = new URLSearchParams({ limit: String(ARCHIVE_PAGE_SIZE), offset: String(archiveBrowseOffset) });
-    if (includeDropped) params.set('includeDropped', '1');
+    addArchiveFilterParams(params);
     const res = await fetch(`/api/search?${params}`);
     if (!res.ok) throw new Error((await res.json()).error || t('searchFailedGeneric'));
     const { results } = await res.json();
@@ -2467,17 +2525,54 @@ async function loadArchiveBrowsePage({ reset }) {
 async function runArchiveSearch(query) {
   const q = query.trim();
   if (!q) return loadArchiveBrowsePage({ reset: true });
+  // Gleicher Zaehler wie beim Blaettern: schnelles Umschalten der Domain (oder
+  // des Suchbegriffs) darf eine aeltere, spaeter eintreffende Antwort nicht
+  // ueber die neuere rendern.
+  const requestId = ++archiveBrowseRequestId;
   try {
-    const includeDropped = document.getElementById('archiveIncludeDropped').checked;
     const params = new URLSearchParams({ q });
-    if (includeDropped) params.set('includeDropped', '1');
+    addArchiveFilterParams(params);
     const res = await fetch(`/api/search?${params}`);
     if (!res.ok) throw new Error((await res.json()).error || t('searchFailedGeneric'));
     const { results } = await res.json();
+    if (requestId !== archiveBrowseRequestId) return;
     renderArchiveResults(results, q);
   } catch (e) {
+    if (requestId !== archiveBrowseRequestId) return;
     toast(t('archiveSearchFailedPrefix') + friendlyFetchError(e), { error: true });
   }
+}
+
+// Die erste Option ("Alle Domains") steht im HTML, damit der Sprachwechsel sie
+// mitnimmt; hier werden nur die Domains dahinter neu aufgebaut. Ist die
+// gewaehlte Domain nicht mehr in der Liste (z.B. "auch Verworfene" abgeschaltet),
+// springt die Auswahl auf "Alle Domains", bevor die Liste neu geladen wird.
+// Eigener Zaehler: schnelles Umschalten von "auch Verworfene" darf die Optionen
+// nicht mit der Antwort des aelteren Modus ueberschreiben.
+let archiveDomainRequestId = 0;
+async function loadArchiveDomains() {
+  const select = document.getElementById('archiveDomainSelect');
+  const requestId = ++archiveDomainRequestId;
+  try {
+    const params = new URLSearchParams();
+    if (document.getElementById('archiveIncludeDropped').checked) params.set('includeDropped', '1');
+    const res = await fetch(`/api/archive/domains?${params}`);
+    if (!res.ok) throw new Error((await res.json()).error || t('searchFailedGeneric'));
+    const domains = await res.json();
+    if (requestId !== archiveDomainRequestId) return;
+    const selected = select.value;
+    select.length = 1;
+    for (const { domain, count } of domains) select.add(new Option(`${domain} (${count})`, domain));
+    select.value = domains.some((d) => d.domain === selected) ? selected : '';
+  } catch (e) {
+    if (requestId !== archiveDomainRequestId) return;
+    toast(t('archiveSearchFailedPrefix') + friendlyFetchError(e), { error: true });
+  }
+}
+
+async function refreshArchiveView() {
+  await loadArchiveDomains();
+  return runArchiveSearch(document.getElementById('archiveSearchInput').value);
 }
 
 // Echter Debounce statt rAF-Coalescing (anders als der lokale Filter oben):
@@ -2652,7 +2747,7 @@ function setView(id) {
     // alten "Wonach suchst du?"-Aufforderung - deckt auch den Fall ab, dass
     // seit dem letzten Besuch etwas Neues archiviert wurde (z.B. per "Am
     // PC"-Erledigt-Kuerzel).
-    runArchiveSearch(document.getElementById('archiveSearchInput').value);
+    refreshArchiveView();
   }
   if (id === 'pending') refreshPendingHealth();
 }
@@ -2786,6 +2881,8 @@ function render() {
       btn.addEventListener('click', (e) => { e.stopPropagation(); setDomainDecision(items, d.id); });
       actions.appendChild(btn);
     }
+    actions.appendChild(makeOpenGroupButton(items));
+    actions.appendChild(makeExportGroupButton(items));
     header.appendChild(actions);
     group.appendChild(header);
 
@@ -3068,7 +3165,8 @@ document.getElementById('filterInput').addEventListener('input', (e) => {
   scheduleRender();
 });
 document.getElementById('archiveSearchInput').addEventListener('input', (e) => scheduleArchiveSearch(e.target.value));
-document.getElementById('archiveIncludeDropped').addEventListener('change', () =>
+document.getElementById('archiveIncludeDropped').addEventListener('change', refreshArchiveView);
+document.getElementById('archiveDomainSelect').addEventListener('change', () =>
   runArchiveSearch(document.getElementById('archiveSearchInput').value)
 );
 document.querySelectorAll('#themeSwitch button').forEach((btn) => {

@@ -178,6 +178,30 @@ test('loadArchiveBrowsePage() verwirft veraltete Antworten per requestId', () =>
   assert.match(appJs, /if \(requestId !== archiveBrowseRequestId\) return/, 'veraltete Antwort wird nicht verworfen');
 });
 
+// Aufgabe 6: Domain-Auswahl im Archiv. Textuelle Verkabelung (Verhalten per
+// Browser-Nachstellung an einer isolierten Instanz, siehe PR-Beschreibung).
+test('Archiv-Domainauswahl: HTML, i18n und app.js sind verdrahtet', () => {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const indexHtml = readFileSync(path.join(dir, 'index.html'), 'utf8');
+  const i18n = readFileSync(path.join(dir, 'i18n.mjs'), 'utf8');
+  const bar = indexHtml.match(/<div class="workbar-view" data-for="archive"[\s\S]*?\n    <\/div>/);
+  assert.ok(bar, 'Archiv-Werkzeugleiste nicht gefunden');
+  assert.match(bar[0], /<select id="archiveDomainSelect"/, 'select#archiveDomainSelect fehlt in der Archiv-Werkzeugleiste');
+  assert.match(bar[0], /<option value="" data-i18n="archiveDomainAll"/, 'erste Option "Alle Domains" fehlt');
+  assert.match(appJs, /params\.set\('domain', domain\)/, 'domain wird nicht an die Anfrage gehaengt');
+  assert.match(appJs, /fetch\(`\/api\/archive\/domains\?\$\{params\}`\)/, 'Domainliste wird nicht geladen');
+  assert.match(appJs, /async function refreshArchiveView\(\) \{\s*await loadArchiveDomains\(\);/, 'Domainliste wird beim Betreten nicht vor der Suche geladen');
+  assert.match(appJs, /getElementById\('archiveIncludeDropped'\)\.addEventListener\('change', refreshArchiveView\)/, 'Domainliste wird bei includeDropped nicht neu geladen');
+  assert.match(appJs, /getElementById\('archiveDomainSelect'\)\.addEventListener\('change'/, 'Wechsel der Domain loest keine Suche aus');
+  // Die Suche mit Begriff teilt sich den Zaehler mit dem Blaettern, sonst koennte schnelles Umschalten eine alte Antwort rendern.
+  const search = appJs.match(/async function runArchiveSearch[\s\S]*?\n\}/);
+  assert.match(search[0], /const requestId = \+\+archiveBrowseRequestId/, 'runArchiveSearch verwirft veraltete Antworten nicht');
+  for (const key of ['archiveDomainAll', 'archiveDomainSelectTitle']) {
+    const count = (i18n.match(new RegExp(`\\b${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in DE und EN vorhanden sein, gefunden: ${count}`);
+  }
+});
+
 // Runde 3, Befund #1: ein phase:'error'-Ereignis liess runStep() bisher nur
 // toasten und normal zurueckkehren - der Aufrufer meldete danach faelschlich
 // Erfolg mit dem `total` aus dem fruehen "start"-Ereignis.
@@ -205,6 +229,43 @@ test('openExternal() teilt in Chargen auf statt alles in einer Anfrage zu senden
   );
   const count = (i18n.match(/openAllInBrowserConfirm:/g) || []).length;
   assert.equal(count, 2, `openAllInBrowserConfirm muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+});
+
+// Knopf "Alle im Browser oeffnen" je Domain-Gruppe (Sichten, Am PC, Verschwunden):
+// ein Klick oeffnet bis zur Grenze sofort, darueber fragt er nach.
+test('Domain-Gruppen haben einen Oeffnen-Knopf, der erst ueber 10 Links nachfragt', () => {
+  assert.match(appJs, /const OPEN_GROUP_CONFIRM_ABOVE = 10/, 'Grenze fehlt');
+  assert.match(appJs, /items\.length > OPEN_GROUP_CONFIRM_ABOVE && !\(await showConfirmDialog\(t\('openGroupConfirm'/, 'openGroupInBrowser() fragt nicht ab der Grenze nach');
+  assert.match(appJs, /e\.stopPropagation\(\); openGroupInBrowser\(items\)/, 'Knopf muss stopPropagation rufen, sonst klappt der Kopf zu');
+  const uses = (appJs.match(/actions\.appendChild\(makeOpenGroupButton\(items\)\)/g) || []).length;
+  assert.equal(uses, 2, `Knopf muss in renderDomainGroup (Am PC, Verschwunden) und im Sichten-Kopf haengen, gefunden: ${uses}`);
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  for (const key of ['openGroupBtn', 'openGroupTitle', 'openGroupConfirm']) {
+    const count = (i18n.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+  }
+});
+
+// Markdown-Export je Gruppe (Sichten-Kopf, renderDomainGroup) und fuer die
+// gefilterte sichtbare Menge in "Am PC".
+test('Gruppen und Am PC haben einen Markdown-Export-Knopf', () => {
+  assert.match(appJs, /e\.stopPropagation\(\); exportItems\(items, 'markdown'\)/, 'Gruppen-Knopf muss stopPropagation rufen und exportItems(items, markdown) nutzen');
+  const uses = (appJs.match(/actions\.appendChild\(makeExportGroupButton\(items\)\)/g) || []).length;
+  assert.equal(uses, 2, `Knopf muss in renderDomainGroup und im Sichten-Kopf haengen, gefunden: ${uses}`);
+  assert.match(appJs, /exportAllBtn\.addEventListener\('click', \(\) => exportItems\(shown, 'markdown'\)\)/, '"Am PC" muss die gefilterte sichtbare Menge (shown) exportieren');
+
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+  for (const key of ['exportGroupBtn', 'exportGroupTitle', 'exportAllMarkdownBtn', 'exportAllMarkdownTitle']) {
+    const count = (i18n.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+  }
 });
 
 // Runde 3, Befund #3/#4: "Erledigt" war irreversibel, ohne Toast, ohne
@@ -733,6 +794,18 @@ test('Zustand "phone" existiert und bleibt bewusst ohne eigene Ablage', () => {
   const listable = appJs.match(/listable: inventory\.filter\([\s\S]{0,160}?\),/)[0];
   assert.ok(!listable.includes("'phone'"), "'phone' darf nicht in listable stehen, sonst bleibt der Link in Sichten");
 
+  // Auch Leiste, Legende und Filter zeigen 'phone' nicht: Segment, Legendeneintrag
+  // und Filterzeile laufen alle ueber LISTED_DECISIONS statt ueber DECISIONS,
+  // und die Segmentbreiten beziehen sich auf den Bestand ohne 'phone'.
+  assert.match(appJs, /const LISTED_DECISIONS = DECISIONS\.filter\(\(d\) => d\.id !== 'phone'\)/, "LISTED_DECISIONS muss 'phone' ausschliessen");
+  assert.match(appJs, /STATE_FILTER_OPTIONS = \[\{ id: 'open', key: null \}, \.\.\.LISTED_DECISIONS\]/, 'Filterliste hat wieder eine Zeile fuer phone');
+  for (const fn of ['renderSortStripSkeleton', 'renderSortStrip']) {
+    const body = appJs.match(new RegExp(`function ${fn}\\(\\) \\{[\\s\\S]*?\\n\\}\\r?\\n`))[0];
+    assert.ok(!/of DECISIONS\b/.test(body), `${fn} laeuft wieder ueber alle DECISIONS und zeigt phone an`);
+  }
+  assert.match(appJs, /const shown = inventory\.filter\(\(item\) => item\.state !== 'phone'\)/, 'die Segmentbreiten muessen den Bestand ohne phone als Basis nehmen');
+  assert.ok(!/\.s-phone|\.dot\.phone/.test(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'style.css'), 'utf8')), 'CSS fuer Leiste/Legende/Filterzeile phone ist verwaist');
+
   // Waere 'phone' in ARCHIVE_KIND_BY_STATE, liesse applyCloseResults das Item
   // verschwinden - der Tab lebt am Handy aber weiter und der naechste Scan
   // wuerde ihn als neu wieder in "Sichten" legen.
@@ -787,4 +860,28 @@ test('Wiedervorlage: Knopf "Ueberfaellige auf Ohne Termin" fragt nach und nutzt 
     const count = (i18n.match(new RegExp(`\\b${key}:`, 'g')) || []).length;
     assert.equal(count, 2, `${key} muss in DE und EN vorhanden sein, gefunden: ${count}`);
   }
+});
+
+// Rafter-Befund zu PR #86: URLs stammen aus Tabs des Handys, ein javascript:-
+// oder data:-Eintrag im Archiv wurde zum anklickbaren Anker. Die Funktion ist
+// ausfuehrbar (shared/url.mjs), darum direkt geprueft; app.js nur auf Verdrahtung.
+test('Link nur mit http und https: isHttpUrl und renderTitleBlock', async () => {
+  const { isHttpUrl } = await import('./shared/url.mjs');
+  assert.equal(isHttpUrl('http://a.example/x'), true);
+  assert.equal(isHttpUrl('https://a.example/x?q=1'), true);
+  assert.equal(isHttpUrl('HTTPS://A.EXAMPLE/'), true);
+  assert.equal(isHttpUrl('javascript:alert(1)'), false);
+  assert.equal(isHttpUrl('  JavaScript:alert(1)'), false);
+  assert.equal(isHttpUrl('java\tscript:alert(1)'), false);
+  assert.equal(isHttpUrl('data:text/html,<script>1</script>'), false);
+  assert.equal(isHttpUrl('file:///C:/x'), false);
+  assert.equal(isHttpUrl(''), false);
+  assert.equal(isHttpUrl(null), false);
+  assert.equal(isHttpUrl(undefined), false);
+
+  const fn = appJs.match(/function renderTitleBlock\(item\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(fn, 'renderTitleBlock nicht gefunden');
+  assert.match(fn, /createElement\(isHttpUrl\(item\.url\) \? 'a' : 'span'\)/, 'Anker nur bei http/https, sonst span');
+  assert.match(fn, /if \(link\.tagName === 'A'\) \{\s*link\.href = item\.url;/, 'href darf nur im Anker-Zweig gesetzt werden');
+  assert.match(appJs, /import \{ isHttpUrl \} from '\.\/shared\/url\.mjs';/, 'Import von isHttpUrl fehlt');
 });

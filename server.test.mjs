@@ -543,6 +543,66 @@ test('GET /api/search findet archivierte Treffer per Titel', async () => {
   });
 });
 
+// Aufgabe 6: Archiv nach Domain filtern.
+async function seedServerArchive() {
+  const rec = (domain, kind, n) => ({
+    normalizedUrl: `https://${domain}/${n}`,
+    url: `https://${domain}/${n}`,
+    title: `Seite ${n}`,
+    domain,
+    kind,
+    device: 'default',
+    at: `2026-02-0${n}T00:00:00.000Z`,
+    firstSeen: '2026-02-01T00:00:00.000Z',
+  });
+  await appendArchiveRecords([
+    rec('github.com', 'archived', 1),
+    rec('github.com', 'done', 2),
+    rec('github.com', 'dropped', 3),
+    rec('other.example', 'archived', 4),
+  ]);
+}
+
+test('GET /api/search?domain= liefert nur Eintraege dieser Domain (Blaettern, Suche, includeDropped)', async () => {
+  await withServer(async (base) => {
+    await seedServerArchive();
+    const browse = await (await fetch(`${base}/api/search?domain=github.com`)).json();
+    assert.deepEqual(browse.results.map((r) => r.normalizedUrl).sort(), ['https://github.com/1', 'https://github.com/2']);
+    const dropped = await (await fetch(`${base}/api/search?domain=github.com&includeDropped=1`)).json();
+    assert.equal(dropped.results.length, 3);
+    const search = await (await fetch(`${base}/api/search?domain=github.com&q=seite`)).json();
+    assert.equal(search.results.length, 2);
+    const none = await (await fetch(`${base}/api/search?domain=${encodeURIComponent("x'; DROP TABLE archive;--")}`)).json();
+    assert.deepEqual(none.results, []);
+    const all = await (await fetch(`${base}/api/search`)).json();
+    assert.equal(all.results.length, 3, 'ohne domain bleibt alles sichtbar');
+  });
+});
+
+test('GET /api/search?domain= mit mehr als 253 Zeichen liefert 400', async () => {
+  await withServer(async (base) => {
+    const ok = await fetch(`${base}/api/search?domain=${'a'.repeat(253)}`);
+    assert.equal(ok.status, 200);
+    const tooLong = await fetch(`${base}/api/search?domain=${'a'.repeat(254)}`);
+    assert.equal(tooLong.status, 400);
+    assert.match((await tooLong.json()).error, /Domain/);
+  });
+});
+
+test('GET /api/archive/domains liefert [{domain, count}], haeufigste zuerst, respektiert includeDropped', async () => {
+  await withServer(async (base) => {
+    await seedServerArchive();
+    const res = await fetch(`${base}/api/archive/domains`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), [
+      { domain: 'github.com', count: 2 },
+      { domain: 'other.example', count: 1 },
+    ]);
+    const withDropped = await (await fetch(`${base}/api/archive/domains?includeDropped=1`)).json();
+    assert.deepEqual(withDropped[0], { domain: 'github.com', count: 3 });
+  });
+});
+
 // devicesHandler ruft immer adb.listDevices() auf - nicht ohne echte
 // Hardware testbar, siehe Kommentar am Dateianfang. selectDeviceHandler
 // prueft body.serial aber VOR jedem adb-Zugriff, ist also fuer den

@@ -488,8 +488,15 @@ async function searchHandler({ url }) {
   const includeDropped = url.searchParams.get('includeDropped') === '1';
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), 200);
   const offset = Math.max(Number(url.searchParams.get('offset')) || 0, 0);
-  const results = await items.searchArchive(url.searchParams.get('q'), { includeDropped, limit, offset });
+  const domain = url.searchParams.get('domain') || '';
+  // 253 Zeichen ist die Obergrenze eines DNS-Namens, laenger kann keine Domain im Archiv stehen.
+  if (domain.length > 253) throw badRequest('Domain zu lang.');
+  const results = await items.searchArchive(url.searchParams.get('q'), { includeDropped, limit, offset, domain });
   return { results };
+}
+
+async function archiveDomainsHandler({ url }) {
+  return items.getArchiveDomains({ includeDropped: url.searchParams.get('includeDropped') === '1' });
 }
 
 async function snoozeHandler({ body, deviceKey }) {
@@ -721,6 +728,7 @@ const routes = {
   'POST /api/open-external': openExternalHandler,
   'GET /api/scan-meta': scanMetaHandler,
   'GET /api/search': searchHandler,
+  'GET /api/archive/domains': archiveDomainsHandler,
   'GET /api/bookmark-folders': bookmarkFoldersHandler,
   'POST /api/bookmark-check': bookmarkCheckHandler,
   'POST /api/bookmark-archive': bookmarkArchiveHandler,
