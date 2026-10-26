@@ -49,6 +49,12 @@
   --board: #12a5b0;
   --board-text: #0e7a82;
   --board-soft: #e3f6f7;
+  /* Magenta, weil Gruen/Violett/Gelb/Rot/Tuerkis durch die anderen Zustaende
+     und Blau durch --signal belegt sind - bei Punktgroesse muss der Farbton
+     allein unterscheiden. */
+  --phone: #d01884;
+  --phone-text: #a81169;
+  --phone-soft: #fce7f3;
 
   --radius: 6px;
   --radius-lg: 10px;
@@ -94,6 +100,9 @@
     --board: #4dd0e1;
     --board-text: #4dd0e1;
     --board-soft: #163a3d;
+    --phone: #ff8bcb;
+    --phone-text: #ff8bcb;
+    --phone-soft: #3d1f31;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
   }
@@ -127,6 +136,9 @@
   --board: #4dd0e1;
   --board-text: #4dd0e1;
   --board-soft: #163a3d;
+  --phone: #ff8bcb;
+  --phone-text: #ff8bcb;
+  --phone-soft: #3d1f31;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-float: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
@@ -421,6 +433,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   transition: transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 .strip .s-keep { background: var(--keep); }
+.strip .s-phone { background: var(--phone); }
 .strip .s-pc { background: var(--pc); }
 .strip .s-archive { background: var(--archive); }
 .strip .s-drop { background: var(--drop); }
@@ -454,6 +467,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   vertical-align: baseline;
 }
 .strip-legend .dot.keep { background: var(--keep); }
+.strip-legend .dot.phone { background: var(--phone); }
 .strip-legend .dot.pc { background: var(--pc); }
 .strip-legend .dot.archive { background: var(--archive); }
 .strip-legend .dot.drop { background: var(--drop); }
@@ -768,6 +782,8 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .row-select, .group-select { accent-color: var(--signal); width: 1rem; height: 1rem; flex-shrink: 0; }
 .group-select { margin-right: 0.2rem; }
 .tab-row.decision-keep .swatch { background: var(--keep); }
+.tab-row.decision-phone .swatch { background: var(--phone); }
+.swatch.phone { background: var(--phone); }
 .tab-row.decision-pc .swatch { background: var(--pc); }
 .tab-row.decision-archive .swatch { background: var(--archive); }
 .tab-row.decision-drop .swatch { background: var(--drop); }
@@ -969,11 +985,13 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 }
 .decision-buttons button svg { display: block; }
 .decision-buttons button.keep { border-color: var(--keep); color: var(--keep-text); }
+.decision-buttons button.phone { border-color: var(--phone); color: var(--phone-text); }
 .decision-buttons button.pc { border-color: var(--pc); color: var(--pc-text); }
 .decision-buttons button.archive { border-color: var(--archive); color: var(--archive-text); }
 .decision-buttons button.drop { border-color: var(--drop); color: var(--drop-text); }
 .decision-buttons button.board { border-color: var(--board); color: var(--board-text); }
 .decision-buttons button.active.keep { background: var(--keep-soft); border-color: var(--keep); color: var(--keep-text); }
+.decision-buttons button.active.phone { background: var(--phone-soft); border-color: var(--phone); color: var(--phone-text); }
 .decision-buttons button.active.pc { background: var(--pc-soft); border-color: var(--pc); color: var(--pc-text); }
 .decision-buttons button.active.archive { background: var(--archive-soft); border-color: var(--archive); color: var(--archive-text); }
 .decision-buttons button.active.drop { background: var(--drop-soft); border-color: var(--drop); color: var(--drop-text); }
@@ -1135,6 +1153,7 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   background: var(--line-strong);
 }
 .filter-check .dot.keep { background: var(--keep); }
+.filter-check .dot.phone { background: var(--phone); }
 .filter-check .dot.pc { background: var(--pc); }
 .filter-check .dot.archive { background: var(--archive); }
 .filter-check .dot.drop { background: var(--drop); }

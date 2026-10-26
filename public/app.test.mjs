@@ -668,3 +668,54 @@ test('Runde 5 #1: Systray-Helfer wertet die Zaehler aus und meldet Faelliges', (
   );
   assert.match(serverJs, /items\.getOpenCounts\(deviceKey\)/, '/api/scan-meta liefert die Zaehler nicht');
 });
+
+// Nutzerbefund 26.10.2026: fuer "bleibt am Handy offen, soll aber NICHT auf
+// den PC" gab es keinen Zustand - 'keep' liess den Link in "Sichten" stehen,
+// die Entscheidung war damit folgenlos. Der neue Zustand 'phone' faellt
+// bewusst aus listable/pendingItems/pcItems heraus; ohne eigene Ablage waere
+// er ein Schwarzes Loch. Dieser Test prueft genau diese Verkabelung.
+test('Zustand "phone" ist mit einer eigenen Ablage verdrahtet, nicht ins Leere', () => {
+  const decisions = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'shared', 'decisions.mjs'),
+    'utf8'
+  );
+  const indexHtml = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'index.html'),
+    'utf8'
+  );
+  const i18n = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'i18n.mjs'),
+    'utf8'
+  );
+
+  assert.match(decisions, /id: 'phone',[\s\S]*?closesTab: false/, "'phone' darf den Tab am Handy nie schliessen");
+  assert.match(indexHtml, /id="view-phone"/, 'Abschnitt fuer die Ablage fehlt in index.html');
+  assert.match(indexHtml, /data-for="[^"]*\bphone\b/, 'Werkzeugleiste gilt nicht fuer die neue Ablage');
+
+  for (const [needle, hint] of [
+    [/\{ id: 'phone', labelKey: 'viewPhone'/, 'Ablage fehlt in VIEWS'],
+    [/phoneItems: inventory\.filter\(\(i\) => i\.state === 'phone'/, 'partition() kennt die Menge nicht'],
+    [/if \(viewId === 'phone'\) return p\.phoneItems\.length;/, 'Zaehler am Ablagen-Reiter fehlt'],
+    [/renderPhoneView\(p\.phoneItems\);/, 'render() ruft die Ansicht nicht auf'],
+    [/function renderPhoneView/, 'Ansicht ist nicht definiert'],
+    [/getElementById\('view-phone'\)/, 'Abschnitts-Element wird nicht geholt'],
+  ]) {
+    assert.match(appJs, needle, hint);
+  }
+
+  for (const key of ['viewPhone', 'phoneSectionSub', 'phoneEmptyTitle', 'phoneEmptyBody',
+                     'decisionPhoneLabel', 'decisionPhoneStateLabel', 'decisionPhoneOutcome']) {
+    const count = (i18n.match(new RegExp(`${key}:`, 'g')) || []).length;
+    assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
+  }
+
+  // Der Kern: waere 'phone' in ARCHIVE_KIND_BY_STATE, liesse applyCloseResults
+  // das Item verschwinden - der Tab lebt am Handy aber weiter und der naechste
+  // Scan wuerde ihn als neu wieder in "Sichten" legen.
+  const itemsJs = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'items.mjs'),
+    'utf8'
+  );
+  const map = itemsJs.match(/const ARCHIVE_KIND_BY_STATE = \{[^}]*\}/)[0];
+  assert.ok(!map.includes('phone'), "'phone' darf nicht archiviert werden - das Item muss aktiv bleiben");
+});

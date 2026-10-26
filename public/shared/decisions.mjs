@@ -27,6 +27,23 @@ export const DECISIONS = [
     closesTab: false,
   },
   {
+    id: 'phone',
+    // b/p/a/v/o sind belegt - h fuer "Handy".
+    key: 'h',
+    // Nutzerbefund 26.10.2026: fuer "bleibt am Handy offen, soll aber NICHT
+    // auf den PC" gab es keinen Zustand. 'keep' kam dem am naechsten, liess
+    // den Link aber in "Sichten" stehen (siehe partition() in app.js) - die
+    // Entscheidung war damit faktisch folgenlos und der Link blieb liegen.
+    // Dieser Zustand ist das fehlende Gegenstueck: wie 'keep' closesTab:false
+    // (der Tab am Handy wird nie angefasst), aber mit eigener Ablage, so dass
+    // der Link aus der Sichtliste verschwindet. Bewusst NICHT in
+    // ARCHIVE_KIND_BY_STATE (lib/items.mjs): das Item bleibt ein aktives
+    // Item, sonst wuerde der naechste Scan den am Handy weiterhin offenen Tab
+    // als neu einlesen und er stuende wieder in "Sichten".
+    icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="4.5" y="1.5" width="7" height="13" rx="1.5"/><path d="M8 12.2h.01" stroke-linecap="round"/></svg>',
+    closesTab: false,
+  },
+  {
     id: 'pc',
     key: 'p',
     icon: '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="2.5" width="13" height="8.5" rx="1"/><path d="M5.5 14.5h5M8 11v3.5" stroke-linecap="round"/></svg>',
