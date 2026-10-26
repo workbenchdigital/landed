@@ -137,7 +137,6 @@ const appEl = document.getElementById('app');
 const appMain = document.getElementById('app-main');
 const traysEl = document.getElementById('trays');
 const pendingSectionEl = document.getElementById('view-pending');
-const phoneSectionEl = document.getElementById('view-phone');
 const pcSectionEl = document.getElementById('view-pc');
 const snoozedSectionEl = document.getElementById('view-snoozed');
 const missingSectionEl = document.getElementById('view-missing');
@@ -169,7 +168,6 @@ const ARCHIVE_KIND_SWATCH = { archived: 'archive', dropped: 'drop', done: 'pc' }
 const VIEWS = [
   { id: 'triage', labelKey: 'viewTriage', accent: 'signal' },
   { id: 'pending', labelKey: 'viewPending', accent: 'pc' },
-  { id: 'phone', labelKey: 'viewPhone', accent: null },
   { id: 'pc', labelKey: 'viewPc', accent: 'pc' },
   { id: 'snoozed', labelKey: 'viewSnoozed', accent: null },
   { id: 'missing', labelKey: 'viewMissing', accent: null },
@@ -2164,45 +2162,6 @@ function renderSnoozedView(items) {
 // die Entscheidungs-Knoepfe bleiben die einzige Aktion.
 // Runde-3-Befund #14: Kopfzeilen-Zaehler folgt der gefilterten Menge (siehe
 // renderPcView fuer die Begruendung).
-// "Nur am Handy": entschieden, aber ohne jede Folge am PC - der Tab bleibt
-// dort offen (closesTab:false), der Link ist nur aus "Sichten" heraus. Diese
-// Ablage ist deshalb kein Arbeitsstapel, sondern das Gedaechtnis dafuer, was
-// man bewusst am Telefon gelassen hat. Ohne sie waere der Zustand ein
-// Schwarzes Loch: er faellt aus listable/pendingItems/pcItems heraus und
-// waere nirgends mehr sichtbar oder zurueckzunehmen. Die
-// Entscheidungsknoepfe stehen genau deshalb mit in der Zeile.
-function renderPhoneView(items) {
-  phoneSectionEl.innerHTML = '';
-  if (!items.length) {
-    renderSectionHead(phoneSectionEl, t('viewPhone'), 0, t('phoneSectionSub'));
-    renderEmptyState(phoneSectionEl, t('phoneEmptyTitle'), t('phoneEmptyBody'));
-    return;
-  }
-
-  const shown = visibleItems(items);
-  renderSectionHead(phoneSectionEl, t('viewPhone'), shown.length, t('phoneSectionSub'));
-  if (!shown.length) return renderNoFilterMatch(phoneSectionEl);
-
-  for (const [domain, group] of groupByDomain(shown)) {
-    const list = renderDomainGroup(phoneSectionEl, domain, group);
-    for (const item of group) {
-      const row = document.createElement('div');
-      row.className = 'tab-row decision-phone';
-      row.tabIndex = 0;
-      row.dataset.key = item.normalizedUrl;
-
-      const swatch = document.createElement('span');
-      swatch.className = 'swatch phone';
-      row.appendChild(swatch);
-      row.appendChild(renderTitleBlock(item));
-      row.appendChild(
-        makeRowActions(makeDecisionButtons(item.normalizedUrl, item.state, (d) => setState(item.normalizedUrl, d)))
-      );
-      list.appendChild(row);
-    }
-  }
-}
-
 function renderMissingView(items) {
   missingSectionEl.innerHTML = '';
   if (!items.length) {
@@ -2541,16 +2500,20 @@ function partition() {
   return {
     snoozedItems: inventory.filter(isSnoozed),
     pendingItems: inventory.filter((i) => isPending(i) && !isSnoozed(i)),
-    phoneItems: inventory.filter((i) => i.state === 'phone' && !isSnoozed(i)),
     pcItems: inventory.filter((i) => isPcDone(i) && !isSnoozed(i)),
     missingItems: inventory.filter((i) => i.missingSince && i.state === 'open' && !isSnoozed(i)),
+    // 'phone' fehlt hier absichtlich und hat auch keine eigene Ablage: diese
+    // Links sollen am Telefon offen bleiben und sonst nichts - keine Liste
+    // am PC (Nutzerentscheidung 26.10.2026). Sie fallen damit aus jeder
+    // Ansicht heraus und erscheinen nur noch als Zahl im Kontrollstreifen.
+    // Das ist gewollt, kein vergessener Fall.
     listable: inventory.filter(
       (i) => (i.state === 'open' || i.state === 'keep') && !i.missingSince && !isSnoozed(i)
     ),
   };
 }
 
-const CROSS_TRAY_VIEW_IDS = ['triage', 'pending', 'phone', 'pc', 'snoozed', 'missing'];
+const CROSS_TRAY_VIEW_IDS = ['triage', 'pending', 'pc', 'snoozed', 'missing'];
 
 // Runde-3-Befund #12: die Textsuche galt bisher nur je Ablage - ein
 // bestimmter Tab liess sich nur finden, indem man den Suchbegriff durch bis
@@ -2566,7 +2529,7 @@ function renderCrossTrayHint(p) {
     crossTrayHintEl.hidden = true;
     return;
   }
-  const setsByView = { triage: p.listable, pending: p.pendingItems, phone: p.phoneItems, pc: p.pcItems, snoozed: p.snoozedItems, missing: p.missingItems };
+  const setsByView = { triage: p.listable, pending: p.pendingItems, pc: p.pcItems, snoozed: p.snoozedItems, missing: p.missingItems };
   const hits = CROSS_TRAY_VIEW_IDS.filter((id) => id !== activeView)
     .map((id) => ({ id, count: setsByView[id].filter(matchesFilter).length }))
     .filter((h) => h.count > 0);
@@ -2592,7 +2555,6 @@ function renderCrossTrayHint(p) {
 function trayCount(viewId, p) {
   if (viewId === 'triage') return p.listable.filter((i) => i.state === 'open').length;
   if (viewId === 'pending') return p.pendingItems.length;
-  if (viewId === 'phone') return p.phoneItems.length;
   if (viewId === 'pc') return p.pcItems.length;
   if (viewId === 'snoozed') return p.snoozedItems.length;
   if (viewId === 'missing') return p.missingItems.length;
@@ -2679,7 +2641,6 @@ function render() {
   const p = partition();
   renderTrays(p);
   renderPendingView(p.pendingItems);
-  renderPhoneView(p.phoneItems);
   renderPcView(p.pcItems);
   renderSnoozedView(p.snoozedItems);
   renderMissingView(p.missingItems);
@@ -2692,7 +2653,6 @@ function render() {
   const activeItemsById = {
     triage: listable,
     pending: p.pendingItems,
-    phone: p.phoneItems,
     pc: p.pcItems,
     snoozed: p.snoozedItems,
     missing: p.missingItems,

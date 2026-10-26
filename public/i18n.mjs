@@ -139,7 +139,6 @@ export const STRINGS = {
     // ---- Ablagen (VIEWS-Beschriftungen) ----
     viewTriage: 'Sichten',
     viewPending: 'Vorgemerkt',
-    viewPhone: 'Nur am Handy',
     viewPc: 'Am PC',
     viewSnoozed: 'Wiedervorlage',
     viewMissing: 'Verschwunden',
@@ -151,7 +150,7 @@ export const STRINGS = {
     decisionKeepOutcome: 'Tab bleibt am Handy offen, Link bleibt hier in „Sichten"',
     decisionPhoneLabel: 'Nur Handy',
     decisionPhoneStateLabel: 'nur am Handy',
-    decisionPhoneOutcome: 'Tab bleibt am Handy offen, Link verschwindet aus „Sichten" in die Ablage „Nur am Handy"',
+    decisionPhoneOutcome: 'Tab bleibt am Handy offen, Link verschwindet aus „Sichten" und taucht am PC nicht wieder auf',
     decisionPcLabel: 'Nur PC',
     decisionPcStateLabel: 'nur am PC',
     decisionPcOutcome: 'Tab wird am Handy geschlossen, bleibt hier als eigene Aufgabenliste',
@@ -298,9 +297,6 @@ export const STRINGS = {
     snoozedEmptyBody: 'Mit W auf einer Zeile — oder über das Uhr-Symbol — legst du fest, wann ein Tab wieder auftauchen soll.',
 
     // ---- "Verschwunden" ----
-    phoneSectionSub: 'Bleibt am Telefon offen, keine Aufgabe am PC.',
-    phoneEmptyTitle: 'Nichts nur am Handy',
-    phoneEmptyBody: 'Tabs, die du beim Sichten auf „Nur Handy" setzt, landen hier — sie bleiben am Telefon offen und werden nie geschlossen.',
     missingSectionSub: 'Beim Scan nicht mehr gefunden, noch unentschieden.',
     missingEmptyTitle: 'Alles auffindbar',
     missingEmptyBody: 'Hier landen Tabs, die beim Einlesen gefehlt haben — etwa weil sie am Telefon geschlossen wurden.',
@@ -475,7 +471,6 @@ export const STRINGS = {
 
     viewTriage: 'Triage',
     viewPending: 'Pending',
-    viewPhone: 'Phone only',
     viewPc: 'On PC',
     viewSnoozed: 'Snoozed',
     viewMissing: 'Missing',
@@ -486,7 +481,7 @@ export const STRINGS = {
     decisionKeepOutcome: 'Tab stays open on the phone, link stays here in "Triage"',
     decisionPhoneLabel: 'Phone only',
     decisionPhoneStateLabel: 'phone only',
-    decisionPhoneOutcome: 'Tab stays open on the phone, link leaves "Triage" for the "Phone only" tray',
+    decisionPhoneOutcome: 'Tab stays open on the phone, link leaves "Triage" and does not reappear on the PC',
     decisionPcLabel: 'PC only',
     decisionPcStateLabel: 'PC only',
     decisionPcOutcome: 'Tab closes on the phone, stays here as its own task list',
@@ -625,9 +620,6 @@ export const STRINGS = {
     snoozedEmptyTitle: 'Nothing snoozed',
     snoozedEmptyBody: 'Press W on a row — or use the clock icon — to set when a tab should show up again.',
 
-    phoneSectionSub: 'Stays open on the phone, no task on the PC.',
-    phoneEmptyTitle: 'Nothing phone-only',
-    phoneEmptyBody: 'Tabs you set to "Phone only" while triaging land here — they stay open on the phone and are never closed.',
     missingSectionSub: 'No longer found while scanning, still undecided.',
     missingEmptyTitle: 'Everything findable',
     missingEmptyBody: 'Tabs that were missing during a scan land here — for example because they were closed on the phone.',

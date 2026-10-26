@@ -671,10 +671,13 @@ test('Runde 5 #1: Systray-Helfer wertet die Zaehler aus und meldet Faelliges', (
 
 // Nutzerbefund 26.10.2026: fuer "bleibt am Handy offen, soll aber NICHT auf
 // den PC" gab es keinen Zustand - 'keep' liess den Link in "Sichten" stehen,
-// die Entscheidung war damit folgenlos. Der neue Zustand 'phone' faellt
-// bewusst aus listable/pendingItems/pcItems heraus; ohne eigene Ablage waere
-// er ein Schwarzes Loch. Dieser Test prueft genau diese Verkabelung.
-test('Zustand "phone" ist mit einer eigenen Ablage verdrahtet, nicht ins Leere', () => {
+// die Entscheidung war damit folgenlos. Der Zustand 'phone' schliesst die
+// Luecke. Nach dem ersten echten Einsatz am selben Tag hat der Nutzer die
+// zuerst gebaute Ablage "Nur am Handy" wieder abbestellt: diese Links sollen
+// am Telefon offen bleiben und sonst nichts, also auch keine Liste am PC
+// fuellen. Der Test haelt beide Haelften fest - der Zustand existiert, aber
+// er hat bewusst keine Ansicht.
+test('Zustand "phone" existiert und bleibt bewusst ohne eigene Ablage', () => {
   const decisions = readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), 'shared', 'decisions.mjs'),
     'utf8'
@@ -689,29 +692,33 @@ test('Zustand "phone" ist mit einer eigenen Ablage verdrahtet, nicht ins Leere',
   );
 
   assert.match(decisions, /id: 'phone',[\s\S]*?closesTab: false/, "'phone' darf den Tab am Handy nie schliessen");
-  assert.match(indexHtml, /id="view-phone"/, 'Abschnitt fuer die Ablage fehlt in index.html');
-  assert.match(indexHtml, /data-for="[^"]*\bphone\b/, 'Werkzeugleiste gilt nicht fuer die neue Ablage');
 
-  for (const [needle, hint] of [
-    [/\{ id: 'phone', labelKey: 'viewPhone'/, 'Ablage fehlt in VIEWS'],
-    [/phoneItems: inventory\.filter\(\(i\) => i\.state === 'phone'/, 'partition() kennt die Menge nicht'],
-    [/if \(viewId === 'phone'\) return p\.phoneItems\.length;/, 'Zaehler am Ablagen-Reiter fehlt'],
-    [/renderPhoneView\(p\.phoneItems\);/, 'render() ruft die Ansicht nicht auf'],
-    [/function renderPhoneView/, 'Ansicht ist nicht definiert'],
-    [/getElementById\('view-phone'\)/, 'Abschnitts-Element wird nicht geholt'],
-  ]) {
-    assert.match(appJs, needle, hint);
-  }
-
-  for (const key of ['viewPhone', 'phoneSectionSub', 'phoneEmptyTitle', 'phoneEmptyBody',
-                     'decisionPhoneLabel', 'decisionPhoneStateLabel', 'decisionPhoneOutcome']) {
+  for (const key of ['decisionPhoneLabel', 'decisionPhoneStateLabel', 'decisionPhoneOutcome']) {
     const count = (i18n.match(new RegExp(`${key}:`, 'g')) || []).length;
     assert.equal(count, 2, `${key} muss in beiden Sprachen (DE/EN) vorhanden sein, gefunden: ${count}`);
   }
 
-  // Der Kern: waere 'phone' in ARCHIVE_KIND_BY_STATE, liesse applyCloseResults
-  // das Item verschwinden - der Tab lebt am Handy aber weiter und der naechste
-  // Scan wuerde ihn als neu wieder in "Sichten" legen.
+  // Keine Ablage: weder Reiter noch Abschnitt noch Render-Pfad. Ein
+  // zurueckkehrendes view-phone waere eine Rueckabwicklung der
+  // Nutzerentscheidung, kein Fortschritt.
+  assert.ok(!indexHtml.includes('view-phone'), 'index.html hat wieder einen Abschnitt fuer eine Ablage');
+  for (const [needle, hint] of [
+    [/labelKey: 'viewPhone'/, 'VIEWS hat wieder einen Reiter'],
+    [/renderPhoneView/, 'es gibt wieder eine eigene Ansicht'],
+    [/phoneItems/, 'partition() bildet wieder eine eigene Menge'],
+  ]) {
+    assert.ok(!needle.test(appJs), hint);
+  }
+
+  // listable ist der Grund, warum der Zustand ueberhaupt wirkt: nur 'open'
+  // und 'keep' stehen in "Sichten", 'phone' faellt heraus und bleibt auch
+  // nach einem erneuten Scan draussen.
+  const listable = appJs.match(/listable: inventory\.filter\([\s\S]{0,160}?\),/)[0];
+  assert.ok(!listable.includes("'phone'"), "'phone' darf nicht in listable stehen, sonst bleibt der Link in Sichten");
+
+  // Waere 'phone' in ARCHIVE_KIND_BY_STATE, liesse applyCloseResults das Item
+  // verschwinden - der Tab lebt am Handy aber weiter und der naechste Scan
+  // wuerde ihn als neu wieder in "Sichten" legen.
   const itemsJs = readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'lib', 'items.mjs'),
     'utf8'

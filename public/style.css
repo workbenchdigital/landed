@@ -783,7 +783,6 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
 .group-select { margin-right: 0.2rem; }
 .tab-row.decision-keep .swatch { background: var(--keep); }
 .tab-row.decision-phone .swatch { background: var(--phone); }
-.swatch.phone { background: var(--phone); }
 .tab-row.decision-pc .swatch { background: var(--pc); }
 .tab-row.decision-archive .swatch { background: var(--archive); }
 .tab-row.decision-drop .swatch { background: var(--drop); }
