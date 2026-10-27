@@ -677,15 +677,11 @@ button.danger:hover { background: var(--drop-soft); border-color: var(--drop); }
   background: var(--card);
   box-shadow: var(--shadow-card);
   overflow: hidden;
-  /* Ueberspringt Layout/Paint fuer Gruppen ausserhalb des Sichtbereichs -
-     render() baut bei jeder Aenderung weiterhin das komplette DOM neu auf
-     (siehe app.js), aber der Browser muss nur noch das tatsaechlich
-     Sichtbare layouten. contain-intrinsic-size ist nur die Anfangsschaetzung
-     fuer die Scrollbar-Groesse, bevor eine Gruppe zum ersten Mal sichtbar
-     war - danach merkt sich Chromium die echte Groesse.
-     ponytail: kein JS-Aufwand noetig; Virtualisierung erst wenn das nicht reicht. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 60px;
+  /* Bewusst KEIN content-visibility: render() baut das DOM bei jeder Aktion neu
+     auf, die neuen Gruppen ausserhalb des Sichtbereichs zaehlen dann nur mit
+     der Schaetzhoehe, das Dokument wird kurz niedrig und die Seite springt nach
+     oben (Erledigt in "Am PC", 27.10.2026). Neuzeichnen mit 356 Zeilen gemessen:
+     51 ms mit, 49 ms ohne - kein Gewinn. */
 }
 
 .domain-header {

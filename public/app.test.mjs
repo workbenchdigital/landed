@@ -125,6 +125,22 @@ test('Faellige Wiedervorlagen zeigen ein dauerhaftes Badge im Ablagen-Reiter', (
   assert.match(style, /\.tray-due/, 'CSS fuer .tray-due fehlt');
 });
 
+// 27.10.2026: content-visibility auf .domain-group liess die Seite nach jeder
+// Aktion (z.B. "Erledigt" in "Am PC") nach oben springen, weil render() das DOM
+// neu aufbaut und die neuen Gruppen ausserhalb des Sichtbereichs nur mit der
+// Schaetzhoehe zaehlen. Ohne Browser nur als Quelltext pruefbar.
+test('Domain-Gruppen setzen kein content-visibility (Seite springt sonst nach oben)', () => {
+  const style = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), 'style.css'),
+    'utf8'
+  ).replace(/\/\*[\s\S]*?\*\//g, '');
+  const blocks = [...style.matchAll(/[^{}]*\.domain-group[^{}]*\{[^}]*\}/g)].map((m) => m[0]);
+  assert.ok(blocks.length, 'CSS-Block fuer .domain-group fehlt');
+  for (const block of blocks) {
+    assert.doesNotMatch(block, /content-visibility\s*:/, 'content-visibility auf .domain-group zieht die Scrollposition nach jedem render() auf 0');
+  }
+});
+
 // Runde 2, Vorschlag 3: Erledigt-Zaehler im Kontrollstreifen - bisher zeigte
 // der Streifen nur den Ist-Bestand, nie einen Zeitbezug.
 test('Erledigt-Zaehler im Kontrollstreifen ist verdrahtet', () => {
